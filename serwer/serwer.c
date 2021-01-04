@@ -4,19 +4,25 @@ Rzeczy do zrobienia:
 - pozamykać pliki i kolejki
 */
 
+#include <pthread.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <time.h>
 #include <sys/msg.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
-#include <stdlib.h>
 
 #define MAX_USERS 100
-#define MAIN_PORT 621
+#define MAIN_PORT 1025
 
 const int DEBUG = 1;
 const char userFile[] = "users";
-
 
 struct Message
 {
@@ -40,11 +46,34 @@ struct LogUser
 	char username[16];
 	int fd;
 };
+//Nie jest w klasie bo error wypierdalal
+void *handleThread(void *fd)
+{
+	int fd1 = *((int *) fd);
+	char buf[255];
+	memset(&buf,0,255);
+	time_t now;
+	while(1)
+	{
+		time(&now);
+		strcpy(buf,ctime(&now));
+		write(fd1, buf,255);
+		memset(&buf,0,255);
+		strcpy(buf,"Jebac gesslera\n");
+		write(fd1,buf,255);
+		sleep(5);
+	}
+	close(fd1);
+	pthread_exit(NULL);
+	}
 
 
 class Server
 {
 	private:
+		int fd_socket;
+		struct sockaddr_in addr;
+		pthread_t threads[15];
 
 		int regUsers;
 		int logUsers;
@@ -211,14 +240,59 @@ class Server
 			return;
 		}
 
+
+
 		void mainLoop()
 		{
+			socklen_t addr_size;
+			int i=0; //narazie prowizorka z tablica watkow
 			while (1)
 			{
-				// todo
+				socklen_t sa_size;
+				int client = accept(fd_socket, (struct sockaddr *)&addr, &addr_size);
+				int cr = pthread_create(&threads[i],NULL, handleThread, (void *)&client);
+				if(cr != 0)
+					printf("CREATE THREAD FAILED\n");
+				else
+					printf("CREATE THREAD SUCCESSFULL\n");
+				i++;
+
 			}
 		}
 
+		void connect(int port)
+		{
+			fd_socket = socket(AF_INET, SOCK_STREAM,0);
+			if(fd_socket<0) {
+				printf("	CREATE FAILED\n");
+				exit(0);
+			}
+			else
+				printf("	CREATE SUCCESSFULL\n");
+			memset(&addr, 0, sizeof(addr));
+
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(port);
+			addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+			int nFoo = 1;
+			setsockopt(fd_socket, SOL_SOCKET, SO_REUSEADDR, (char*)&nFoo, sizeof(nFoo));
+
+			if(bind(fd_socket,(struct sockaddr*)&addr, sizeof(addr))<0) {
+				printf("	BIND FAILED\n");
+				exit(0);
+			}
+			else
+				printf("	BIND SUCCESSFULL\n");
+
+			if(listen(fd_socket, 10) < 0) {
+				printf("	LISTEN FAILED\n");
+				exit(0);
+			}
+			else
+				printf("	LISTEN SUCCESSFULL\n");
+			return;
+		}
 	public:
 		
 		Server(int port, const char * filename)
@@ -228,14 +302,18 @@ class Server
 				loggedList[i].free = 1;
 				userList[i].msgN = 0;
 			}
+			loadUsers(filename);
+			printf("CONNECTING...\n");
+			connect(port);
 			if (DEBUG) printf("Server is now fully operational! I'm all ears.\n");
 		}
 
 		void start()
 		{
 			// start the server
+
 			printf("Lmao no.\n");
-			//mainLoop();
+			mainLoop();
 		}
 };
 
