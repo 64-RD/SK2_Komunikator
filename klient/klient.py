@@ -1,6 +1,6 @@
 import PySimpleGUI as sg
 import socket
-
+from time import sleep
 
 def main():
 
@@ -20,8 +20,9 @@ def main():
     print(list(values.values()))     # masło.maślane()
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('192.168.1.64', 1025))
+    s.connect(('192.168.1.64', 1124))
     s.send(list(values.values())[0].encode())
+    sleep(1)
     s.send(list(values.values())[1].encode())
 
     '''
