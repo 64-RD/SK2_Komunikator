@@ -21,7 +21,7 @@ Rzeczy do zrobienia:
 #include <errno.h>
 
 #define MAX_USERS 100
-#define MAIN_PORT 1025
+#define MAIN_PORT 1124
 
 const int DEBUG = 1;
 const char userFile[] = "users";
@@ -235,29 +235,30 @@ class Server
 			read(fd1, &buf, sizeof(buf));
 			printf("2: %s\n", buf);
 
-
 			close(fd1);
-			if (DEBUG) printf("Exiting thread... (fd: %d)", fd1);
+			if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd1);
 			pthread_exit(NULL);
 		}
 
 		void mainLoop()
 		{
-			socklen_t addr_size;
+			socklen_t sa_size;
+			struct sockaddr_in sa;
+			
 			int i = 0; //narazie prowizorka z tablica watkow
 			while (1)
 			{
-				socklen_t sa_size;
-				int client = accept(fd_socket, (struct sockaddr *)&addr, &addr_size);
+				sa_size = sizeof(sa);
+				//memset(&sa, 0, sizeof(sa));
+				int client = accept(fd_socket, (struct sockaddr *)&sa, &sa_size);
 				if (client < 0)
 				{
-					// error z pizdy
+					printf("Error occured on accepting connection!\n");
 					perror("accept");
-					printf("%d\n", errno);
 				}
 				else
 				{
-					if (DEBUG) printf("Incoming connection from %s...\n", inet_ntoa(addr.sin_addr));
+					if (DEBUG) printf("Incoming connection from %s...\n", inet_ntoa(sa.sin_addr));
 					int cr = pthread_create(&threads[i], NULL, handleThread, (void *)&client);
 					if (cr != 0)
 					{
@@ -267,6 +268,7 @@ class Server
 					else if (DEBUG) printf("New thread created! (fd: %d)\n", client);
 					i++;
 				}
+
 
 			}
 		}
