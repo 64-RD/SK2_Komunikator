@@ -78,12 +78,12 @@ class Server
 		struct sockaddr_in addr;
 		pthread_t threads[MAX_USERS];
 		std::vector<User> users;
-
+		/*
 		int regUsers;
 		int logUsers;
 		RegUser userList[MAX_USERS];
 		LogUser loggedList[MAX_USERS];
-
+		*/
 
 		struct PthData
 		{
@@ -223,6 +223,7 @@ class Server
 			if (DEBUG) printf("User %s logged in.\n", u);
 			int userID = s->findUser(u);
 			s->users[userID].online = true;
+			s->users[userID].fd = fd1;
 
 			// handling requests happens here
 			char buf[1024] = {0};
@@ -236,7 +237,7 @@ class Server
 						std::string result = s->getFriends(userID);
 						break;
 
-
+					// todo
 				}
 
 				write(fd1, &buf, sizeof(buf));
@@ -287,11 +288,6 @@ class Server
 		
 		Server(int port, const char * filename)
 		{
-			for (int i = 0; i < MAX_USERS; i++)
-			{
-				loggedList[i].free = 1;
-				userList[i].msgN = 0;
-			}
 			loadUsers(filename);
 			myport = port;
 		}
