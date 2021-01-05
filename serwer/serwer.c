@@ -64,6 +64,12 @@ class Server
 		LogUser loggedList[MAX_USERS];
 
 
+		struct PthData
+		{
+			int fd;
+			Server * server;
+		};
+
 		int findExistingUser(char u[16])
 		{
 			for (int i = 0; i < MAX_USERS; i++)
@@ -223,17 +229,37 @@ class Server
 			return;
 		}
 
-		static void *handleThread(void *fd)
+		static void *handleThread(void *arg)
 		{
-			int fd1 = *((int *) fd);
-			char buf[255];
-			memset(&buf, 0, 255);
+			PthData x = *((PthData *) arg);
+			int fd1 = x.fd;
+			Server * s = x.server;
+			char u[16], p[16];
 
-			// handling goes there
-			read(fd1, &buf, sizeof(buf));
-			printf("1: %s\n", buf);
-			read(fd1, &buf, sizeof(buf));
-			printf("2: %s\n", buf);
+			// logging in happens here
+			while (1) 
+			{
+				memset(&u, 0, 16);
+				memset(&p, 0, 16);
+				read(fd1, &u, sizeof(u));
+				read(fd1, &p, sizeof(p));
+				if (DEBUG) printf("User %s tries to log in...\n", u);
+
+				if (s->loginChecker(u, p)) break;
+				else
+				{
+					char msg[] = "Login unsuccessful!\0";
+					write(fd1, &msg, sizeof(msg));
+					memset(&u, 0, 16);
+					memset(&p, 0, 16);
+					read(fd1, &u, sizeof(u));
+					read(fd1, &p, sizeof(p));
+				}
+			}
+			char msg[] = "Login successful!\0";
+			write(fd1, &msg, sizeof(msg));
+			if (DEBUG) printf("User %s logged in.\n", u);
+
 
 			close(fd1);
 			if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd1);
@@ -258,8 +284,11 @@ class Server
 				}
 				else
 				{
+					PthData pdata;
+					pdata.fd = client;
+					pdata.server = this;
 					if (DEBUG) printf("Incoming connection from %s...\n", inet_ntoa(sa.sin_addr));
-					int cr = pthread_create(&threads[i], NULL, handleThread, (void *)&client);
+					int cr = pthread_create(&threads[i], NULL, handleThread, (void *)&pdata);
 					if (cr != 0)
 					{
 						if (DEBUG) printf("ERROR - thread creation failed!\n");
@@ -282,7 +311,7 @@ class Server
 				loggedList[i].free = 1;
 				userList[i].msgN = 0;
 			}
-			//loadUsers(filename);
+			regUsers = loadUsers(filename);
 			myport = port;
 		}
 
