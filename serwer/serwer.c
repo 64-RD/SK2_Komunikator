@@ -1,24 +1,22 @@
 /*
-Rzeczy do zrobienia:
-- obsługa błędu "brak pliku"
-- pozamykać pliki i kolejki
+I HAVE NO IDEA WHAT IM DOING
 */
 
-#include <pthread.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <pthread.h>		// multithreading
+#include <sys/types.h>		// constants
+#include <sys/socket.h>		// socket control
+#include <netinet/in.h>		// net control
+#include <arpa/inet.h>		// protocol standards
+#include <netdb.h>			// ???
+#include <stdio.h>			// print output if DEBUG = 1
+#include <stdlib.h>			
+#include <string.h>			// strcmp and strncpy
 #include <unistd.h>
-#include <stdio.h>
-#include <time.h>
 #include <sys/msg.h>
 #include <fcntl.h>
-#include <errno.h>
+#include <errno.h>			// error control btw
+#include <vector>			// dynamic tables lets go
+#include <string>			// say goodbye to this little char array of yours!
 
 #define MAX_USERS 100
 #define MAIN_PORT 1124
@@ -28,7 +26,6 @@ const char userFile[] = "users";
 
 struct Message
 {
-	long type;
 	char from[16];
 	char to[16];
 	char content[1024];
@@ -50,6 +47,29 @@ struct LogUser
 };
 
 
+class User
+{
+	public:
+		char username[16];
+		char password[16];
+		bool online = false;
+		int fd = -1;
+		std::vector<Message> msgs;
+		std::vector<int> friends;
+
+		User(char u[16], char p[16])
+		{
+			strncpy(this->username, u, 16);
+			strncpy(this->password, p, 16);
+		}
+
+		void addFriend(int id)
+		{
+			this->friends.push_back(id);
+		}
+};
+
+
 class Server
 {
 	private:
@@ -57,6 +77,7 @@ class Server
 		int fd_socket;
 		struct sockaddr_in addr;
 		pthread_t threads[MAX_USERS];
+		std::vector<User> users;
 
 		int regUsers;
 		int logUsers;
@@ -70,31 +91,25 @@ class Server
 			Server * server;
 		};
 
-		int findExistingUser(char u[16])
+		int findUser(char u[16])
 		{
-			for (int i = 0; i < MAX_USERS; i++)
+			for (int i = 0; i < this->users.size(); i++)
 			{
-				if (strcmp(userList[i].username, u) == 0) 
+				if (strcmp(this->users[i].username, u) == 0) 
 					return i;
 			}
 			return -1;
 		}
 
-		int findLoggedUser(char u[16])
+		std::string getFriends(int id)
 		{
-			for (int i = 0; i < MAX_USERS; i++)
+			char buf[1024] = {0};
+			std::string result = "";
+			for (int i = 0; i < this->users[id].friends.size(); i++)
 			{
-				if (loggedList[i].free == 0 && strcmp(loggedList[i].username, u) == 0) 
-					return i;
+				result += this->users[i].username;
 			}
-			return -1;
-		}
-
-		char * getLoggedUsers()
-		{
-			// todo
-			
-			// return
+			return result;
 		}
 
 		void readOneWord(int fd, char readTo[16])
@@ -111,7 +126,7 @@ class Server
 			return;
 		}
 
-		int loadUsers(const char * filename)
+		void loadUsers(const char * filename)
 		{
 			if (DEBUG) printf("Loading data about registered users...\n");
 			int fd = open(filename, O_RDWR);
@@ -124,8 +139,9 @@ class Server
 				readOneWord(fd, password);
 				if (username[0] != 0)
 				{
-					strncpy(userList[currentUser].username, username, 16);
-					strncpy(userList[currentUser].password, password, 16);
+					// strncpy(userList[currentUser].username, username, 16);
+					// strncpy(userList[currentUser].password, password, 16);
+					this->users.push_back(User(username, password));
 					if (DEBUG) printf("Loaded user %i: %s\n", currentUser+1, username );
 				}
 				else 
@@ -138,46 +154,23 @@ class Server
 				currentUser += 1;
 			}
 			if (DEBUG) printf("Succesfully loaded %i users into memory.\n", currentUser);
-			return currentUser;
+			return;
 		}
 
 		int loginChecker(char username[16], char password[16])
 		{
-			for (int i = 0; i < this->regUsers; i++)
+			for (int i = 0; i < this->users.size(); i++)
 			{
-				if ( strcmp(username, userList[i].username) == 0 &&
-					strcmp(password, userList[i].password) == 0 )
+				if ( strcmp(username, users[i].username) == 0 &&
+					strcmp(password, users[i].password) == 0 )
 					return 1;
 			}
 			return 0;
 		}
-
-		int checkLoginQueue(int fd)
-		{
-			// check for logins lmao
-			int pfd = 0;
-			loginHandler(pfd);
-
-			// return
-		}
-
-		void loginHandler(int pfd)
-		{
-			// start child for handling the critical section (user input)
-			if ( fork() == 0 )
-			{
-				
-				// DO SOMEHTING HERE
-
-				// kill the child process
-				exit(0);
-			}
-			return;
-		}
-
+		/* todo lmao
 		void sendMessage(struct Message letter, int reciever, int sender)
 		{
-			int id = findLoggedUser(letter.to); 	// find reciever
+			int id = 0 // findLoggedUser(letter.to) // find reciever
 			if ( id != -1 ) 						// reciever is online
 			{
 				// todo
@@ -197,38 +190,7 @@ class Server
 			// todo: send confirmation back
 			return;
 		}
-
-		void messageHandler(int userID, int type)
-		{
-			switch (type)
-			{
-				case 4: // asking for sending a message
-					// todo
-					break;
-
-				case 5: // asking for list of online users
-					// todo
-					break;
-
-				case 8: // send messages from heap to user
-					// todo
-					break;
-			}
-			return;
-		}
-
-		void checkForRequests()
-		{
-			for (int i = 0; i < MAX_USERS; i++)
-			{
-				if (loggedList[i].free == 0)
-				{
-					// todo
-				}
-			}
-			return;
-		}
-
+		*/
 		static void *handleThread(void *arg)
 		{
 			PthData x = *((PthData *) arg);
@@ -259,7 +221,26 @@ class Server
 			char msg[] = "Login successful!\0";
 			write(fd1, &msg, sizeof(msg));
 			if (DEBUG) printf("User %s logged in.\n", u);
+			int userID = s->findUser(u);
+			s->users[userID].online = true;
 
+			// handling requests happens here
+			char buf[1024] = {0};
+			while (1)
+			{
+				read(fd1, &buf, sizeof(buf));
+
+				switch (buf[0])
+				{
+					case 'f':
+						std::string result = s->getFriends(userID);
+						break;
+
+
+				}
+
+				write(fd1, &buf, sizeof(buf));
+			}
 
 			close(fd1);
 			if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd1);
@@ -311,7 +292,7 @@ class Server
 				loggedList[i].free = 1;
 				userList[i].msgN = 0;
 			}
-			regUsers = loadUsers(filename);
+			loadUsers(filename);
 			myport = port;
 		}
 
