@@ -8,6 +8,7 @@ Rzeczy do zrobienia:
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,9 +18,10 @@ Rzeczy do zrobienia:
 #include <time.h>
 #include <sys/msg.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #define MAX_USERS 100
-#define MAIN_PORT 1025
+#define MAIN_PORT 1124
 
 const int DEBUG = 1;
 const char userFile[] = "users";
@@ -46,34 +48,15 @@ struct LogUser
 	char username[16];
 	int fd;
 };
-//Nie jest w klasie bo error wypierdalal
-void *handleThread(void *fd)
-{
-	int fd1 = *((int *) fd);
-	char buf[255];
-	memset(&buf,0,255);
-	time_t now;
-	while(1)
-	{
-		time(&now);
-		strcpy(buf,ctime(&now));
-		write(fd1, buf,255);
-		memset(&buf,0,255);
-		strcpy(buf,"Jebac gesslera\n");
-		write(fd1,buf,255);
-		sleep(5);
-	}
-	close(fd1);
-	pthread_exit(NULL);
-	}
 
 
 class Server
 {
 	private:
+		int myport;
 		int fd_socket;
 		struct sockaddr_in addr;
-		pthread_t threads[15];
+		pthread_t threads[MAX_USERS];
 
 		int regUsers;
 		int logUsers;
@@ -240,59 +223,56 @@ class Server
 			return;
 		}
 
+		static void *handleThread(void *fd)
+		{
+			int fd1 = *((int *) fd);
+			char buf[255];
+			memset(&buf, 0, 255);
 
+			// handling goes there
+			read(fd1, &buf, sizeof(buf));
+			printf("1: %s\n", buf);
+			read(fd1, &buf, sizeof(buf));
+			printf("2: %s\n", buf);
+
+			close(fd1);
+			if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd1);
+			pthread_exit(NULL);
+		}
 
 		void mainLoop()
 		{
-			socklen_t addr_size;
-			int i=0; //narazie prowizorka z tablica watkow
+			socklen_t sa_size;
+			struct sockaddr_in sa;
+			
+			int i = 0; //narazie prowizorka z tablica watkow
 			while (1)
 			{
-				socklen_t sa_size;
-				int client = accept(fd_socket, (struct sockaddr *)&addr, &addr_size);
-				int cr = pthread_create(&threads[i],NULL, handleThread, (void *)&client);
-				if(cr != 0)
-					printf("CREATE THREAD FAILED\n");
+				sa_size = sizeof(sa);
+				//memset(&sa, 0, sizeof(sa));
+				int client = accept(fd_socket, (struct sockaddr *)&sa, &sa_size);
+				if (client < 0)
+				{
+					printf("Error occured on accepting connection!\n");
+					perror("accept");
+				}
 				else
-					printf("CREATE THREAD SUCCESSFULL\n");
-				i++;
+				{
+					if (DEBUG) printf("Incoming connection from %s...\n", inet_ntoa(sa.sin_addr));
+					int cr = pthread_create(&threads[i], NULL, handleThread, (void *)&client);
+					if (cr != 0)
+					{
+						if (DEBUG) printf("ERROR - thread creation failed!\n");
+						// todo odrzuć połączenie
+					}
+					else if (DEBUG) printf("New thread created! (fd: %d)\n", client);
+					i++;
+				}
+
 
 			}
 		}
 
-		void connect(int port)
-		{
-			fd_socket = socket(AF_INET, SOCK_STREAM,0);
-			if(fd_socket<0) {
-				printf("	CREATE FAILED\n");
-				exit(0);
-			}
-			else
-				printf("	CREATE SUCCESSFULL\n");
-			memset(&addr, 0, sizeof(addr));
-
-			addr.sin_family = AF_INET;
-			addr.sin_port = htons(port);
-			addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-			int nFoo = 1;
-			setsockopt(fd_socket, SOL_SOCKET, SO_REUSEADDR, (char*)&nFoo, sizeof(nFoo));
-
-			if(bind(fd_socket,(struct sockaddr*)&addr, sizeof(addr))<0) {
-				printf("	BIND FAILED\n");
-				exit(0);
-			}
-			else
-				printf("	BIND SUCCESSFULL\n");
-
-			if(listen(fd_socket, 10) < 0) {
-				printf("	LISTEN FAILED\n");
-				exit(0);
-			}
-			else
-				printf("	LISTEN SUCCESSFULL\n");
-			return;
-		}
 	public:
 		
 		Server(int port, const char * filename)
@@ -302,17 +282,47 @@ class Server
 				loggedList[i].free = 1;
 				userList[i].msgN = 0;
 			}
-			loadUsers(filename);
-			printf("CONNECTING...\n");
-			connect(port);
-			if (DEBUG) printf("Server is now fully operational! I'm all ears.\n");
+			//loadUsers(filename);
+			myport = port;
 		}
 
 		void start()
 		{
-			// start the server
+			if (DEBUG) printf("Starting services...\n");
 
-			printf("Lmao no.\n");
+			fd_socket = socket(AF_INET, SOCK_STREAM, 0);
+			
+			if (fd_socket < 0)
+			{
+				printf("ERROR - socket creation unsuccesful.\n");
+				exit(0);
+			}
+			else if (DEBUG) printf("Socket created...\n");
+
+			memset(&addr, 0, sizeof(addr));
+
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(myport);
+			addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+			int nFoo = 1;
+			setsockopt(fd_socket, SOL_SOCKET, SO_REUSEADDR, (char*)&nFoo, sizeof(nFoo));
+
+			if (bind(fd_socket, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+			{
+				printf("ERROR - bind failed.\n");
+				exit(0);
+			}
+			else if (DEBUG) printf("Bind succesfull...\n");
+
+			if (listen(fd_socket, 10) < 0)
+			{
+				printf("ERROR - listen failed.\n");
+				exit(0);
+			}
+			else if (DEBUG) printf("Listening set up.\n");
+			
+			if (DEBUG) printf("Server is now fully operational! I'm all ears.\n");
 			mainLoop();
 		}
 };
