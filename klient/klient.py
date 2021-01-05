@@ -2,28 +2,37 @@ import PySimpleGUI as sg
 import socket
 from time import sleep
 
+
 def main():
 
-    # All the stuff inside your window.
+    # GUI login window.
     layout = [
         [sg.Text('Enter username and password.')],
         [sg.Text('Username:', size=(15, 1)), sg.InputText()],
         [sg.Text('Password:', size=(15, 1)), sg.InputText(password_char='*')],
         [sg.Submit(), sg.Cancel()]
     ]
-
-    # Create the Window
     window = sg.Window('SK2_Komunikator', layout)
 
-    event, values = window.read()
-    window.close()
-    print(list(values.values()))     # masło.maślane()
-
+    # Connection start
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('192.168.1.64', 1124))
-    s.send(list(values.values())[0].encode())
-    sleep(1)
-    s.send(list(values.values())[1].encode())
+
+    while True:
+
+        event, values = window.read()
+
+        s.send(list(values.values())[0].encode())
+        sleep(1)
+        s.send(list(values.values())[1].encode())
+
+        data = s.recv(1024).decode().strip()
+        print(len(data), data)
+        sg.popup(data)
+
+        if data[6] == "s":
+            window.close()
+            break
 
     '''
     # Event Loop to process "events" and get the "values" of the inputs
