@@ -112,6 +112,16 @@ class Server
 			}
 			return result;
 		}
+		std::string getUsers(uint id)
+		{
+			char buf[1024] = {0};
+			std::string result = "";
+			for (uint i = 0; i < this->users.size(); i++)
+			{
+				if(i != id) result += users[i].username;
+			}
+			return result;
+		}
 
 		void readOneWord(int fd, char readTo[16])
 		{
@@ -169,9 +179,9 @@ class Server
 			return 0;
 		}
 		
-		void sendMessage(struct Message msg, Server *s)
+		void sendMessage(struct Message msg)
 		{
-			int to = s->findUser(msg.to); // findLoggedUser(letter.to) // find reciever
+			int to = this->findUser(msg.to); // findLoggedUser(letter.to) // find reciever
 			if ( users[to].online) 						// reciever is online
 			{
 				write(users[to].fd,msg.from,16);
@@ -179,10 +189,10 @@ class Server
 			}
 			else 									// reciever is offline
 			{
-				if ( s->users[to].msgs.size() < 50 ) // adding to a heap of undelivered messages...
+				if ( this->users[to].msgs.size() < 50 ) // adding to a heap of undelivered messages...
 				{
 					pthread_mutex_lock(&lock);
-						s->users[to].msgs.push_back(msg);
+						this->users[to].msgs.push_back(msg);
 					pthread_mutex_unlock(&lock);
 				}
 				else 								// heap is already full
@@ -194,55 +204,74 @@ class Server
 			// todo: send confirmation back
 			return;
 		}
-		static void *handleThread(void *arg)
+		int login(int fd)
 		{
-			PthData x = *((PthData *) arg);
-			int fd1 = x.fd;
-			Server * s = x.server;
 			char u[16], p[16];
-
 			// logging in happens here
 			while (1) 
 			{
 				memset(&u, 0, 16);
 				memset(&p, 0, 16);
-				read(fd1, &u, sizeof(u));
-				read(fd1, &p, sizeof(p));
+				read(fd, &u, sizeof(u));
+				read(fd, &p, sizeof(p));
 				if (DEBUG) printf("User %s tries to log in...\n", u);
 
-				if (s->loginChecker(u, p)) break;
+				if (this->loginChecker(u, p)) break;
 				else
 				{
 					char msg[] = "Login unsuccessful!\0";
-					write(fd1, &msg, sizeof(msg));
+					write(fd, &msg, sizeof(msg));
 				}
+				//TODO OBSLUGA PRZYPADKU GDY UZYTKOWNIK ZAMKNIE APLIKACJE W TYM MIEJSCU
 			}
 			char msg[] = "Login successful!\0";
-			write(fd1, &msg, sizeof(msg));
+			write(fd, &msg, sizeof(msg));
 			if (DEBUG) printf("User %s logged in.\n", u);
-			int userID = s->findUser(u);
-			s->users[userID].online = true;
-			s->users[userID].fd = fd1;
+			int userID = this->findUser(u);
+			this->users[userID].online = true;
+			this->users[userID].fd = fd;
+
+			return userID;
+		}
+
+		void initialize(int userID)
+		{
+			std::string result = this->getUsers(userID);
+			//SEND ALL USERS
+			// maybe? write(fd1, result, sizeof(result));
 
 			//sending unread messages
-			for(uint i =0; i<s->users[userID].msgs.size();i++)
+			for(uint i =0; i<this->users[userID].msgs.size();i++)
 			{
-				write(fd1,s->users[userID].msgs[i].from,16);
-				write(fd1,s->users[userID].msgs[i].content,1024);
+				write(this->users[userID].fd,this->users[userID].msgs[i].from,16);
+				write(this->users[userID].fd,this->users[userID].msgs[i].content,1024);
 			}
-			s->users[userID].msgs.clear();
+			this->users[userID].msgs.clear();
+		}
+
+		static void *handleThread(void *arg)
+		{
+			PthData x = *((PthData *) arg);
+			int fd1 = x.fd;
+			Server * s = x.server;
+
+			int userID = s->login(fd1);
+			s->initialize(userID); //sending unread messages, maybe all users?
+
 
 			// handling requests happens here
 			char buf[1024] = {0};
 			while (1)
 			{
-				read(fd1, &buf, sizeof(buf));
+				read(fd1, &buf, sizeof(buf));	//receiving option to do
 
 				switch (buf[0])
 				{
 					case 'f': //friends list
 						{
 							std::string result = s->getFriends(userID);
+							//SENDING FRIENDS LIST
+							//write(fd1,result,sizeof(result)); ???
 						}
 						break;
 					//case 'a': add friend
@@ -251,12 +280,11 @@ class Server
 						{
 							Message msg;
 
-							strcpy(msg.from,u);
+							strcpy(msg.from,s->users[userID].username);
 							read(fd1,&msg.to,16);
 							read(fd1,&msg.content,1024);
 
-							s->sendMessage(msg, s);
-							
+							s->sendMessage(msg);
 							
 						}
 						break;
@@ -266,21 +294,21 @@ class Server
 							s->users[userID].online = false;
 							s->users[userID].fd = -1;
 
-							if (DEBUG) printf("User: %s: Logout\n",u);
+							if (DEBUG) printf("User: %s: Logout\n",s->users[userID].username);
 							break;
 						}
 						break;
 
 					default:
 						{
-							if(DEBUG) printf("User: %s: Uknown command\n",u);
+							if(DEBUG) printf("User: %s: Uknown command\n",s->users[userID].username);
 						}
 						break;
 
 					// todo
 				}
 
-				write(fd1, &buf, sizeof(buf));
+				//write(fd1, &buf, sizeof(buf)); don't need?
 			}
 
 			close(fd1);
