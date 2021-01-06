@@ -46,6 +46,11 @@ struct LogUser
 	char username[16];
 	int fd;
 };
+struct Invitation
+{
+	int user1;
+	int user2;
+};
 
 
 class User
@@ -57,6 +62,7 @@ class User
 		int fd = -1;
 		std::vector<Message> msgs;
 		std::vector<int> friends;
+		std::vector<Invitation> invitations;
 
 		User(char u[16], char p[16])
 		{
@@ -102,16 +108,17 @@ class Server
 			return -1;
 		}
 
-		std::string getFriends(int id)
+/*		char *getFriends(int id)
 		{
-			char buf[1024] = {0};
-			std::string result = "";
+			char result[1024];
 			for (uint i = 0; i < this->users[id].friends.size(); i++)
 			{
-				result += users[this->users[id].friends[i]].username;
+				strcat(result, users[this->users[id].friends[i]].username);
+				strcat(result,"\n");
 			}
 			return result;
 		}
+		*/
 		std::string getUsers(uint id)
 		{
 			char buf[1024] = {0};
@@ -122,7 +129,36 @@ class Server
 			}
 			return result;
 		}
+/*		char *getInvitation(uint id)
+		{
+			char result[1024];
 
+			for (uint i = 0; i < this->users[id].invitations.size(); i++)
+			{
+				strcat(result,users[this->users[id].invitations[i].user1].username);
+				strcat(result,"\n");
+			}
+			return result;
+		}*/
+		void popInvitation(int id1, int id2)
+		{
+			for(uint i = 0 ;i < this->users[id1].invitations.size();i++)
+			{
+				if(this->users[id1].invitations[i].user1 == id2)
+				{
+					this->users[id1].invitations.erase(this->users[id1].invitations.begin() + i);
+				}
+			}
+			for(uint i = 0 ;i < this->users[id2].invitations.size();i++)
+			{
+				if(this->users[id2].invitations[i].user2 == id1)
+				{
+					this->users[id2].invitations.erase(this->users[id2].invitations.begin() + i);
+				}
+			}
+			return;
+
+		}
 		void readOneWord(int fd, char readTo[16])
 		{
 			char temp;
@@ -212,7 +248,14 @@ class Server
 			{
 				memset(&u, 0, 16);
 				memset(&p, 0, 16);
+
 				read(fd, &u, sizeof(u));
+				if(u[0] = 'l') //i hope it works
+				{
+					close(fd);
+					if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd);
+					pthread_exit(NULL);
+				}
 				read(fd, &p, sizeof(p));
 				if (DEBUG) printf("User %s tries to log in...\n", u);
 
@@ -222,7 +265,7 @@ class Server
 					char msg[] = "Login unsuccessful!\0";
 					write(fd, &msg, sizeof(msg));
 				}
-				//TODO OBSLUGA PRZYPADKU GDY UZYTKOWNIK ZAMKNIE APLIKACJE W TYM MIEJSCU
+				
 			}
 			char msg[] = "Login successful!\0";
 			write(fd, &msg, sizeof(msg));
@@ -269,12 +312,84 @@ class Server
 				{
 					case 'f': //friends list
 						{
-							std::string result = s->getFriends(userID);
+							char result[1024];
+							for (uint i = 0; i < s->users[userID].friends.size(); i++)
+							{
+								strcat(result, s->users[s->users[userID].friends[i]].username);
+								strcat(result,"\n");
+							}
+							write(fd1,result,1024);
 							//SENDING FRIENDS LIST
 							//write(fd1,result,sizeof(result)); ???
 						}
 						break;
-					//case 'a': add friend
+					case 'a': //invite friend
+						{
+							//TODO CHECK IF IS ALREADY INVITED BUT NOT FRIEND
+							char u[16];
+							read(fd1,&u,16);
+							bool isFriend = false;
+							int id = s->findUser(u);
+							if(id != -1) //check if user exists
+							{
+								for(uint i = 0; i < s->users[userID].friends.size();i++) //check if user is already friend
+								{
+									if(id == s->users[userID].friends[i])	
+									{
+										write(fd1,"User is friend\n",16);
+										isFriend == true;
+										break;
+									}
+								}
+								if(!isFriend) //if exist and isn't friend then send invite
+								{
+									Invitation tmp;
+									tmp.user1 = userID;
+									tmp.user2 = id;
+									s->users[id].invitations.push_back(tmp);
+									s->users[userID].invitations.push_back(tmp);
+								}
+							}
+							else
+							{
+								write(fd1,"User don't exist\n",16);
+							}
+						}
+						break;
+					case 'i'://send invitation
+						{
+							char result[1024];
+
+							for (uint i = 0; i < s->users[userID].invitations.size(); i++)
+							{
+								strcat(result,s->users[s->users[userID].invitations[i].user1].username);
+								strcat(result,"\n");
+							}
+							write(fd1,result,1024);
+						}
+						break;
+					case 'b': //accept or decline invitation to friend
+						{
+							char decision[16];
+							read(fd1,&decision,16);
+							char user[16];
+							read(fd1,&user,16);
+							int id = s->findUser(user);
+							if(decision[0] = 't') //if want to accept
+							{
+								s->users[userID].friends.push_back(id);
+								s->users[id].friends.push_back(userID);
+
+								s->popInvitation(userID,id); //
+							}
+							else if(decision[0] = 'f') //if want to decline
+							{
+								s->popInvitation(userID,id);
+							}
+							break;
+						}
+
+						
 
 					case 'm': // send messages
 						{
