@@ -93,7 +93,7 @@ class Server
 
 		int findUser(char u[16])
 		{
-			for (int i = 0; i < this->users.size(); i++)
+			for (uint i = 0; i < this->users.size(); i++)
 			{
 				if (strcmp(this->users[i].username, u) == 0) 
 					return i;
@@ -105,9 +105,9 @@ class Server
 		{
 			char buf[1024] = {0};
 			std::string result = "";
-			for (int i = 0; i < this->users[id].friends.size(); i++)
+			for (uint i = 0; i < this->users[id].friends.size(); i++)
 			{
-				result += this->users[i].username;
+				result += users[this->users[id].friends[i]].username;
 			}
 			return result;
 		}
@@ -159,7 +159,7 @@ class Server
 
 		int loginChecker(char username[16], char password[16])
 		{
-			for (int i = 0; i < this->users.size(); i++)
+			for (uint i = 0; i < this->users.size(); i++)
 			{
 				if ( strcmp(username, users[i].username) == 0 &&
 					strcmp(password, users[i].password) == 0 )
@@ -212,10 +212,6 @@ class Server
 				{
 					char msg[] = "Login unsuccessful!\0";
 					write(fd1, &msg, sizeof(msg));
-					memset(&u, 0, 16);
-					memset(&p, 0, 16);
-					read(fd1, &u, sizeof(u));
-					read(fd1, &p, sizeof(p));
 				}
 			}
 			char msg[] = "Login successful!\0";
@@ -233,8 +229,38 @@ class Server
 
 				switch (buf[0])
 				{
-					case 'f':
-						std::string result = s->getFriends(userID);
+					case 'f': //friends list
+						{
+							std::string result = s->getFriends(userID);
+						}
+						break;
+
+					case 'm': // send messages
+						{
+							Message msg;
+
+							strcpy(msg.from,s->users[userID].username);
+							read(fd1,&msg.to,16);
+							read(fd1,&msg.content,1024);
+
+							s->users[s->findUser(msg.to)].msgs.push_back(msg);
+						}
+						break;
+
+					case 'l': //logout
+						{
+							s->users[userID].online = false;
+							s->users[userID].fd = -1;
+
+							if (DEBUG) printf("Logout successful\n");
+							break;
+						}
+						break;
+
+					default:
+						{
+							if(DEBUG) printf("Uknown command\n");
+						}
 						break;
 
 					// todo
