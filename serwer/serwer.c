@@ -1,5 +1,6 @@
 /*
 I HAVE NO IDEA WHAT IM DOING
+MUCH MORE MUTEXXXXX - DELETE THEM IF YOU THINK THEY ARE USELESS
 */
 
 #include <pthread.h>		// multithreading
@@ -23,7 +24,11 @@ I HAVE NO IDEA WHAT IM DOING
 
 const int DEBUG = 1;
 const char userFile[] = "users";
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock_msg = PTHREAD_MUTEX_INITIALIZER;		//mutex to messages
+pthread_mutex_t lock_friends = PTHREAD_MUTEX_INITIALIZER;	//mutex to friends
+pthread_mutex_t lock_invitation = PTHREAD_MUTEX_INITIALIZER;//mutex to invitations
+
+
 
 struct Message
 {
@@ -60,9 +65,9 @@ class User
 		char password[16];
 		bool online = false;
 		int fd = -1;
-		std::vector<Message> msgs;
-		std::vector<int> friends;
-		std::vector<Invitation> invitations;
+		std::vector<Message> msgs;				//just message(from,to,content)
+		std::vector<int> friends;				//friends list
+		std::vector<Invitation> invitations;	//invitation list
 
 		User(char u[16], char p[16])
 		{
@@ -72,7 +77,22 @@ class User
 
 		void addFriend(int id)
 		{
-			this->friends.push_back(id);
+			pthread_mutex_lock(&lock_friends);
+				this->friends.push_back(id);
+			pthread_mutex_unlock(&lock_friends);
+
+		}
+		void delFriend(int id)
+		{
+			pthread_mutex_lock(&lock_friends);
+				for(uint i = 0; i<this->friends.size();i++)
+				{
+					if(id == friends[i])
+					{
+						friends.erase(friends.begin() + i);
+					}
+				}
+			pthread_mutex_unlock(&lock_friends);
 		}
 };
 
@@ -80,11 +100,11 @@ class User
 class Server
 {
 	private:
-		int myport;
-		int fd_socket;
-		struct sockaddr_in addr;
-		pthread_t threads[MAX_USERS];
-		std::vector<User> users;
+		int myport;						//just port
+		int fd_socket;					//descriptor to socket
+		struct sockaddr_in addr;		//info about socket
+		pthread_t threads[MAX_USERS];	//array with threads for all users
+		std::vector<User> users;		//vector of all users registered
 		/*
 		int regUsers;
 		int logUsers;
@@ -98,7 +118,7 @@ class Server
 			Server * server;
 		};
 
-		int findUser(char u[16])
+		int findUser(char u[16])	//find number of user having his username
 		{
 			for (uint i = 0; i < this->users.size(); i++)
 			{
@@ -140,26 +160,28 @@ class Server
 			}
 			return result;
 		}*/
-		void popInvitation(int id1, int id2)
+		void popInvitation(int id1, int id2)	//remove invitation cause decision has been made(accept or decline)
 		{
-			for(uint i = 0 ;i < this->users[id1].invitations.size();i++)
-			{
-				if(this->users[id1].invitations[i].user1 == id2)
+			pthread_mutex_lock(&lock_invitation);
+				for(uint i = 0 ;i < this->users[id1].invitations.size();i++)
 				{
-					this->users[id1].invitations.erase(this->users[id1].invitations.begin() + i);
+					if(this->users[id1].invitations[i].user1 == id2)
+					{
+						this->users[id1].invitations.erase(this->users[id1].invitations.begin() + i);
+					}
 				}
-			}
-			for(uint i = 0 ;i < this->users[id2].invitations.size();i++)
-			{
-				if(this->users[id2].invitations[i].user2 == id1)
+				for(uint i = 0 ;i < this->users[id2].invitations.size();i++)
 				{
-					this->users[id2].invitations.erase(this->users[id2].invitations.begin() + i);
+					if(this->users[id2].invitations[i].user2 == id1)
+					{
+						this->users[id2].invitations.erase(this->users[id2].invitations.begin() + i);
+					}
 				}
-			}
+			pthread_mutex_unlock(&lock_invitation);
 			return;
 
 		}
-		void readOneWord(int fd, char readTo[16])
+		void readOneWord(int fd, char readTo[16])	//no need to comment lmao
 		{
 			char temp;
 			int i = 0;
@@ -173,7 +195,7 @@ class Server
 			return;
 		}
 
-		void loadUsers(const char * filename)
+		void loadUsers(const char * filename)	//load all users from file
 		{
 			if (DEBUG) printf("Loading data about registered users...\n");
 			int fd = open(filename, O_RDWR);
@@ -204,7 +226,7 @@ class Server
 			return;
 		}
 
-		int loginChecker(char username[16], char password[16])
+		int loginChecker(char username[16], char password[16])		//check if username and password are correct
 		{
 			for (uint i = 0; i < this->users.size(); i++)
 			{
@@ -222,35 +244,40 @@ class Server
 			{
 				write(users[to].fd,msg.from,16);
 				write(users[to].fd, msg.content,1024); //sending message
+				if (DEBUG) printf("User: %s Message Sending - successful\n",msg.from);
 			}
 			else 									// reciever is offline
 			{
-				if ( this->users[to].msgs.size() < 50 ) // adding to a heap of undelivered messages...
-				{
-					pthread_mutex_lock(&lock);
+				pthread_mutex_lock(&lock_msg);
+					if ( this->users[to].msgs.size() < 50 ) // adding to a heap of undelivered messages...
+					{
 						this->users[to].msgs.push_back(msg);
-					pthread_mutex_unlock(&lock);
-				}
-				else 								// heap is already full
-				{
-					if (DEBUG) printf("User: %s too many messages\n",users[to].username);
-				}
+						if (DEBUG) printf("User: %s Message Sending - added to a heap\n",msg.from);
+					}
+					else 								// heap is already full
+					{
+						if (DEBUG) printf("User: %s has too many messages\n",users[to].username);
+					}
+				pthread_mutex_unlock(&lock_msg);
+
 			}
 			
 			// todo: send confirmation back
 			return;
 		}
-		int login(int fd)
+
+		int login(int fd)		// logging in happens here
 		{
+			//TODO PREVENT LOGIN FROM TWO AND MORE CLIENTS AT ONE ACCOUNT
 			char u[16], p[16];
-			// logging in happens here
+			
 			while (1) 
 			{
 				memset(&u, 0, 16);
 				memset(&p, 0, 16);
 
 				read(fd, &u, sizeof(u));
-				if(u[0] = 'l') //i hope it works
+				if(u[0] == 'l' && u[1] == 0) //i hope it works, but is needed when client suprasingly close a application in login window
 				{
 					close(fd);
 					if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd);
@@ -277,30 +304,27 @@ class Server
 			return userID;
 		}
 
-		void initialize(int userID)
+		void initialize(int userID)	//send all messages from heap
 		{
-			std::string result = this->getUsers(userID);
-			//SEND ALL USERS
-			// maybe? write(fd1, result, sizeof(result));
+			pthread_mutex_lock(&lock_msg);
+				for(uint i =0; i<this->users[userID].msgs.size();i++)
+				{
+					write(this->users[userID].fd,this->users[userID].msgs[i].from,16);//send name of sender
+					write(this->users[userID].fd,this->users[userID].msgs[i].content,1024);//send message
+				}
+				this->users[userID].msgs.clear();
+			pthread_mutex_unlock(&lock_msg);
 
-			//sending unread messages
-			for(uint i =0; i<this->users[userID].msgs.size();i++)
-			{
-				write(this->users[userID].fd,this->users[userID].msgs[i].from,16);
-				write(this->users[userID].fd,this->users[userID].msgs[i].content,1024);
-			}
-			this->users[userID].msgs.clear();
 		}
 
 		static void *handleThread(void *arg)
 		{
 			PthData x = *((PthData *) arg);
-			int fd1 = x.fd;
-			Server * s = x.server;
+			int fd1 = x.fd;						//descriptor of client
+			Server * s = x.server;				//pointer to server
 
-			int userID = s->login(fd1);
-			s->initialize(userID); //sending unread messages, maybe all users?
-
+			int userID = s->login(fd1);			//log in to server
+			s->initialize(userID); //sending unread messages when client was offline
 
 			// handling requests happens here
 			char buf[1024] = {0};
@@ -310,96 +334,147 @@ class Server
 
 				switch (buf[0])
 				{
-					case 'f': //friends list
+					case 'f': //sending friends list
 						{
+							if (DEBUG) printf("User: %s Sending friends list...\n",s->users[userID].username);
+
 							char result[1024];
-							for (uint i = 0; i < s->users[userID].friends.size(); i++)
-							{
-								strcat(result, s->users[s->users[userID].friends[i]].username);
-								strcat(result,"\n");
-							}
+							pthread_mutex_lock(&lock_friends);
+								for (uint i = 0; i < s->users[userID].friends.size(); i++)
+								{
+									strcat(result, s->users[s->users[userID].friends[i]].username);
+									strcat(result,"\n");
+								}
+							pthread_mutex_unlock(&lock_friends);
 							write(fd1,result,1024);
-							//SENDING FRIENDS LIST
-							//write(fd1,result,sizeof(result)); ???
+							if (DEBUG) printf("User: %s Sending friends list - successful\n",s->users[userID].username);
 						}
 						break;
 					case 'a': //invite friend
 						{
-							//TODO CHECK IF IS ALREADY INVITED BUT NOT FRIEND
-							char u[16];
-							read(fd1,&u,16);
+							if (DEBUG) printf("User: %s Sending invitation...\n",s->users[userID].username);
+							char u[16];				
+							read(fd1,&u,16);		//reveive username to invite
 							bool isFriend = false;
 							int id = s->findUser(u);
-							if(id != -1) //check if user exists
+							if(id != -1) 			//check if user exists
 							{
-								for(uint i = 0; i < s->users[userID].friends.size();i++) //check if user is already friend
-								{
-									if(id == s->users[userID].friends[i])	
+								pthread_mutex_lock(&lock_invitation);
+									for(uint i = 0;i <s->users[userID].invitations.size();i++)	//check if invitation has been earlier sent
 									{
-										write(fd1,"User is friend\n",16);
-										isFriend == true;
-										break;
+										if(s->users[userID].invitations[i].user2 == id || s->users[id].invitations[i].user1 == userID)
+										{
+											write(fd1,"Was sent earlier\n",16);
+											break;
+										}
 									}
-								}
-								if(!isFriend) //if exist and isn't friend then send invite
+								pthread_mutex_unlock(&lock_invitation);
+
+								pthread_mutex_lock(&lock_friends);
+									for(uint i = 0;i < s->users[userID].friends.size();i++) 	//check if user is already friend
+									{
+										if(id == s->users[userID].friends[i])	
+										{
+											write(fd1,"User is friend\n",16);
+											isFriend == true;
+											break;
+										}
+									}
+								pthread_mutex_unlock(&lock_friends);
+								if(!isFriend) //if exist,wasn't invated earlier and isn't friend then set invitation
 								{
 									Invitation tmp;
 									tmp.user1 = userID;
 									tmp.user2 = id;
-									s->users[id].invitations.push_back(tmp);
-									s->users[userID].invitations.push_back(tmp);
+
+									pthread_mutex_lock(&lock_invitation);
+										s->users[id].invitations.push_back(tmp);
+										s->users[userID].invitations.push_back(tmp);
+									pthread_mutex_unlock(&lock_invitation);
+
+
 								}
 							}
 							else
 							{
 								write(fd1,"User don't exist\n",16);
 							}
+
 						}
+						if (DEBUG) printf("User: %s Invitation - successful\n",s->users[userID].username);
 						break;
-					case 'i'://send invitation
+					case 'i'://send invitation list
 						{
+							if (DEBUG) printf("User: %s Sending invitation list...\n",s->users[userID].username);
 							char result[1024];
 
-							for (uint i = 0; i < s->users[userID].invitations.size(); i++)
-							{
-								strcat(result,s->users[s->users[userID].invitations[i].user1].username);
-								strcat(result,"\n");
-							}
+							pthread_mutex_lock(&lock_invitation);
+								for (uint i = 0; i < s->users[userID].invitations.size(); i++)
+								{
+									strcat(result,s->users[s->users[userID].invitations[i].user1].username);
+									strcat(result,"\n");
+								}
+							pthread_mutex_unlock(&lock_invitation);
+
 							write(fd1,result,1024);
+							if (DEBUG) printf("User: %s Sending invitation list - successful\n",s->users[userID].username);
 						}
 						break;
-					case 'b': //accept or decline invitation to friend
+					case 'b': //accept or decline invitation from user
 						{
+							if (DEBUG) printf("User: %s decision...\n",s->users[userID].username);
 							char decision[16];
-							read(fd1,&decision,16);
-							char user[16];
-							read(fd1,&user,16);
+							read(fd1,&decision,16);	//just receive decision
+							char user[16];			
+							read(fd1,&user,16);		//receive username user accept or decline
 							int id = s->findUser(user);
 							if(decision[0] = 't') //if want to accept
 							{
-								s->users[userID].friends.push_back(id);
-								s->users[id].friends.push_back(userID);
+								pthread_mutex_lock(&lock_friends);
+									s->users[userID].addFriend(id);		// add user to friend list
+									s->users[id].addFriend(userID);		//
+								pthread_mutex_unlock(&lock_friends);
 
-								s->popInvitation(userID,id); //
+								pthread_mutex_lock(&lock_invitation);
+									s->popInvitation(userID,id); 				// delete from invitation list, casue decision has been made
+								pthread_mutex_unlock(&lock_invitation);
 							}
 							else if(decision[0] = 'f') //if want to decline
 							{
-								s->popInvitation(userID,id);
+								pthread_mutex_lock(&lock_invitation);
+									s->popInvitation(userID,id);				// delete from invitation list, casue decision has been made
+								pthread_mutex_unlock(&lock_invitation);
+
 							}
+							if (DEBUG) printf("User: %s decision - successful\n",s->users[userID].username);
 							break;
 						}
+					case 'd': //delete a friend
+						{
+							
+							if(DEBUG) printf("User: %s delete friend...\n",s->users[userID].username);
+							char user[16];
+							read(fd1,&user,16);
+							
+							int id = s->findUser(user);
+							s->users[userID].delFriend(id);
+							s->users[id].delFriend(userID);
+							if(DEBUG) printf("User: %s delete friend - successful\n",s->users[userID].username);
 
-						
+						}
+						break;
 
 					case 'm': // send messages
 						{
+							if (DEBUG) printf("User: %s Sending Message...\n",s->users[userID].username);
+
 							Message msg;
 
-							strcpy(msg.from,s->users[userID].username);
-							read(fd1,&msg.to,16);
-							read(fd1,&msg.content,1024);
+							strcpy(msg.from,s->users[userID].username);	//set sender
+							read(fd1,&msg.to,16);						//receive and set receiver
+							read(fd1,&msg.content,1024);				//receive content of a message
 
-							s->sendMessage(msg);
+							s->sendMessage(msg);						//send message
 							
 						}
 						break;
@@ -420,7 +495,6 @@ class Server
 						}
 						break;
 
-					// todo
 				}
 
 				//write(fd1, &buf, sizeof(buf)); don't need?
