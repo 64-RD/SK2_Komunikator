@@ -23,6 +23,7 @@ I HAVE NO IDEA WHAT IM DOING
 
 const int DEBUG = 1;
 const char userFile[] = "users";
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct Message
 {
@@ -167,30 +168,32 @@ class Server
 			}
 			return 0;
 		}
-		/* todo lmao
-		void sendMessage(struct Message letter, int reciever, int sender)
+		
+		void sendMessage(struct Message msg, Server *s)
 		{
-			int id = 0 // findLoggedUser(letter.to) // find reciever
-			if ( id != -1 ) 						// reciever is online
+			int to = s->findUser(msg.to); // findLoggedUser(letter.to) // find reciever
+			if ( users[to].online) 						// reciever is online
 			{
-				// todo
+				write(users[to].fd,msg.from,16);
+				write(users[to].fd, msg.content,1024); //sending message
 			}
 			else 									// reciever is offline
 			{
-				if ( userList[reciever].msgN < 50 ) // adding to a heap of undelivered messages...
+				if ( s->users[to].msgs.size() < 50 ) // adding to a heap of undelivered messages...
 				{
-					// todo
+					pthread_mutex_lock(&lock);
+						s->users[to].msgs.push_back(msg);
+					pthread_mutex_unlock(&lock);
 				}
 				else 								// heap is already full
 				{
-					// todo
+					if (DEBUG) printf("User: %s too many messages\n",users[to].username);
 				}
 			}
 			
 			// todo: send confirmation back
 			return;
 		}
-		*/
 		static void *handleThread(void *arg)
 		{
 			PthData x = *((PthData *) arg);
@@ -221,6 +224,14 @@ class Server
 			s->users[userID].online = true;
 			s->users[userID].fd = fd1;
 
+			//sending unread messages
+			for(uint i =0; i<s->users[userID].msgs.size();i++)
+			{
+				write(fd1,s->users[userID].msgs[i].from,16);
+				write(fd1,s->users[userID].msgs[i].content,1024);
+			}
+			s->users[userID].msgs.clear();
+
 			// handling requests happens here
 			char buf[1024] = {0};
 			while (1)
@@ -234,16 +245,19 @@ class Server
 							std::string result = s->getFriends(userID);
 						}
 						break;
+					//case 'a': add friend
 
 					case 'm': // send messages
 						{
 							Message msg;
 
-							strcpy(msg.from,s->users[userID].username);
+							strcpy(msg.from,u);
 							read(fd1,&msg.to,16);
 							read(fd1,&msg.content,1024);
 
-							s->users[s->findUser(msg.to)].msgs.push_back(msg);
+							s->sendMessage(msg, s);
+							
+							
 						}
 						break;
 
@@ -252,14 +266,14 @@ class Server
 							s->users[userID].online = false;
 							s->users[userID].fd = -1;
 
-							if (DEBUG) printf("Logout successful\n");
+							if (DEBUG) printf("User: %s: Logout\n",u);
 							break;
 						}
 						break;
 
 					default:
 						{
-							if(DEBUG) printf("Uknown command\n");
+							if(DEBUG) printf("User: %s: Uknown command\n",u);
 						}
 						break;
 
