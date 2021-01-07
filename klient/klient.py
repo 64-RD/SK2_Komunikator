@@ -42,7 +42,8 @@ def get_friends(s):
 
 def get_msgs(s):
     s.send("g".encode())
-    number = int(s.recv(256))
+    number = int.from_bytes(s.recv(4), "little")
+    print(number)
     msgs = []
     for _ in range(number):
         sender = s.recv(256).decode()
@@ -161,7 +162,7 @@ def main():
 
         # Send a bunch of requests to server.
         friends = get_friends(s)
-        messages = get_msgs(s)
+        messages.append(get_msgs(s))
 
         # Update the window with requests results.
         window['friends'].update(friends)
