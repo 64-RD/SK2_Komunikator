@@ -313,7 +313,7 @@ class Server
 						{
 							if (DEBUG) printf("User: %s Sending friends list...\n",s->users[userID].username);
 
-							char result[1024];
+							char result[1024] = {0};
 							pthread_mutex_lock(&lock_friends);
 								for (uint i = 0; i < s->users[userID].friends.size(); i++)
 								{
@@ -444,8 +444,8 @@ class Server
 						{
 						pthread_mutex_lock(&lock_msg);
 							char tmp[16];
-							sprintf(tmp,"%d",int(s->users[userID].msgs.size()));	//convert to char
-							write(fd1,tmp,16);		//send number of messages
+							int temp = int(s->users[userID].msgs.size());
+							write(fd1,&temp,sizeof(int));		//send number of messages
 							for(uint i =0; i<s->users[userID].msgs.size();i++)
 							{
 								write(s->users[userID].fd,s->users[userID].msgs[i].from,16);//send name of sender
@@ -487,8 +487,10 @@ class Server
 						break;
 
 				}
-
-				//write(fd1, &buf, sizeof(buf)); don't need?
+				
+				// best bug fix of the year 2020
+				// if you are offline, just logout
+				if(!s->users[userID].online) break;
 			}
 
 			close(fd1);
