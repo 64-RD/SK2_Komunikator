@@ -304,19 +304,6 @@ class Server
 			return userID;
 		}
 
-		void initialize(int userID)	//send all messages from heap
-		{
-			pthread_mutex_lock(&lock_msg);
-				for(uint i =0; i<this->users[userID].msgs.size();i++)
-				{
-					write(this->users[userID].fd,this->users[userID].msgs[i].from,16);//send name of sender
-					write(this->users[userID].fd,this->users[userID].msgs[i].content,1024);//send message
-				}
-				this->users[userID].msgs.clear();
-			pthread_mutex_unlock(&lock_msg);
-
-		}
-
 		static void *handleThread(void *arg)
 		{
 			PthData x = *((PthData *) arg);
@@ -324,7 +311,6 @@ class Server
 			Server * s = x.server;				//pointer to server
 
 			int userID = s->login(fd1);			//log in to server
-			s->initialize(userID); //sending unread messages when client was offline
 
 			// handling requests happens here
 			char buf[1024] = {0};
@@ -391,6 +377,7 @@ class Server
 										s->users[id].invitations.push_back(tmp);
 										s->users[userID].invitations.push_back(tmp);
 									pthread_mutex_unlock(&lock_invitation);
+									write(fd1,"Invitation was send\n",21);
 
 
 								}
@@ -464,6 +451,21 @@ class Server
 						}
 						break;
 
+					case 'g':
+						{
+						pthread_mutex_lock(&lock_msg);
+							char tmp[16];
+							sprintf(tmp,"%d",int(s->users[userID].msgs.size()));	//convert to char
+							write(fd1,tmp,16);		//send number of messages
+							for(uint i =0; i<s->users[userID].msgs.size();i++)
+							{
+								write(s->users[userID].fd,s->users[userID].msgs[i].from,16);//send name of sender
+								write(s->users[userID].fd,s->users[userID].msgs[i].content,1024);//send message
+							}
+							s->users[userID].msgs.clear();
+						pthread_mutex_unlock(&lock_msg);
+						}
+						break;
 					case 'm': // send messages
 						{
 							if (DEBUG) printf("User: %s Sending Message...\n",s->users[userID].username);
