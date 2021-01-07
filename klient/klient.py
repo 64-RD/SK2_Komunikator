@@ -41,11 +41,13 @@ def get_friends(s):
 
 
 def get_msgs(s):
-    s.send("m".encode())
-    number = s.recv(16)
+    s.send("g".encode())
+    number = int(s.recv(256))
     msgs = []
     for _ in range(number):
-        msgs.append(s.recv(1024).decode())
+        sender = s.recv(256).decode()
+        content = s.recv(4096).decode()
+        msgs.append([sender, content])
     return msgs
 
 
@@ -86,6 +88,28 @@ def send_msg(s, to, content):
     s.send(content.encode())
 
 
+def delete_friend(s, friends):
+
+    layout = [
+        [sg.Text('Select friend to remove')],
+        [sg.Listbox(values=friends, size=(20, 12), key='friends', enable_events=True)],
+        [sg.Button('Submit'), sg.Button('Cancel')]
+    ]
+    window = sg.Window('Adding friend', layout)
+    username = ""
+    while True:
+
+        event, values = window.read()
+
+        if event == 'Cancel':
+            return
+
+        if event == 'Submit':
+            username = list(values.values())[0]
+            window.close()
+            break
+
+
 def main():
 
     # Connection start
@@ -96,32 +120,52 @@ def main():
     username = handle_login(s)
 
     # Preparing the main window
+    text = ""
     friends = get_friends(s)
     messages = get_msgs(s)
-
     layout = [
         [sg.Listbox(values=friends, size=(20, 12), key='friends', enable_events=True),
-         sg.Column([[sg.Txt('64-RD  06.01.2021, 13:42\nKledzik chuj', size=(50,20), key='msgs', background_color='grey')],
+         sg.Column([[sg.Txt(size=(50,20), key='msgs', background_color='grey')],
                     [sg.Input(key='input', size=(20,5)), sg.Button('Send')]])],
-        [sg.Button('Add friend'), sg.Button('Logout')]
+        [sg.Button('Delete friend'), sg.Button('Add friend'), sg.Button('Logout')]
     ]
 
     # The main GUI part.
     window = sg.Window('SK2_Komunikator', layout)
-
+    values = {'friends': [""]}
     while True:
 
+        # Window event handling
+        prev = values['friends'][0]
         event, values = window.read()
 
+        # Exiting the program on button press
         if event == 'Logout' or event == sg.WIN_CLOSED:
             logout(s)
             break
 
+        # Sending messages on button press
         if event == 'Send' and values['input'] != '':
             send_msg(s, values['friends'], values['input'])
 
+        # Adding friends on button press
         if event == 'Add friend':
             invite(s)
+
+        # If another friend was selected, update messages displayed
+        if values['friends'] != prev:
+            text = ""
+            for msg in messages:
+                if msg[0] == values['friends']:
+                    text += f"{msg[0]: {msg[1]}}"
+
+        # Send a bunch of requests to server.
+        friends = get_friends(s)
+        messages = get_msgs(s)
+
+        # Update the window with requests results.
+        window['friends'].update(friends)
+        window['msgs'].update(text)
 
     window.close()
 
