@@ -240,29 +240,18 @@ class Server
 		void sendMessage(struct Message msg)
 		{
 			int to = this->findUser(msg.to); // findLoggedUser(letter.to) // find reciever
-			if ( users[to].online) 						// reciever is online
-			{
-				write(users[to].fd,msg.from,16);
-				write(users[to].fd, msg.content,1024); //sending message
-				if (DEBUG) printf("User: %s Message Sending - successful\n",msg.from);
-			}
-			else 									// reciever is offline
-			{
-				pthread_mutex_lock(&lock_msg);
-					if ( this->users[to].msgs.size() < 50 ) // adding to a heap of undelivered messages...
-					{
-						this->users[to].msgs.push_back(msg);
-						if (DEBUG) printf("User: %s Message Sending - added to a heap\n",msg.from);
-					}
-					else 								// heap is already full
-					{
-						if (DEBUG) printf("User: %s has too many messages\n",users[to].username);
-					}
-				pthread_mutex_unlock(&lock_msg);
-
-			}
+			pthread_mutex_lock(&lock_msg);
+				if ( this->users[to].msgs.size() < 50 ) // adding to a heap of undelivered messages...
+				{
+					this->users[to].msgs.push_back(msg);
+					if (DEBUG) printf("User: %s Message Sending - added to a heap\n",msg.from);
+				}
+				else 								// heap is already full
+				{
+					if (DEBUG) printf("User: %s has too many messages\n",users[to].username);
+				}
+			pthread_mutex_unlock(&lock_msg);
 			
-			// todo: send confirmation back
 			return;
 		}
 
