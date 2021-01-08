@@ -17,6 +17,10 @@ def handle_login(s):
 
         event, values = window.read()
 
+        if event == 'Cancel' or event == sg.WIN_CLOSED:
+            logout(s)
+            exit(0)
+
         s.send(list(values.values())[0].encode())
         sleep(1)
         s.send(list(values.values())[1].encode())
@@ -36,19 +40,18 @@ def logout(s):
 
 def get_friends(s):
     s.send("f".encode())
-    data = s.recv(1024).decode().split(",")
-    return data
+    data = s.recv(1024).decode()
+    return data.replace('\x00', '')
 
 
-def get_msgs(s):
+def get_msgs(s, u):
     s.send("g".encode())
     number = int.from_bytes(s.recv(4), "little")
-    print(number)
     msgs = []
     for _ in range(number):
         sender = s.recv(256).decode()
         content = s.recv(4096).decode()
-        msgs.append([sender, content])
+        msgs.append([sender, u, content])
     return msgs
 
 
@@ -107,15 +110,35 @@ def delete_friend(s, friends):
 
         if event == 'Submit':
             username = list(values.values())[0]
+            print(username)
             window.close()
             break
+
+    if not username:
+        sg.popup("No friend selected...")
+        return
+
+    s.send("d".encode())
+    sleep(1)
+    s.send(username.encode())
+    data = s.recv(1024).decode()
+    sg.popup(data)
+    return
+
+
+def update_text(msgs, curr):
+    text = ""
+    for msg in msgs:
+        if msg[0] == curr or msg[1] == curr:
+            text += f"{msg[0]}: {msg[2]}\n"
+    return text
 
 
 def main():
 
     # Connection start
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('192.168.1.64', 1124))
+    s.connect(('192.168.0.12', 1124))
 
     # Login phase
     username = handle_login(s)
@@ -123,7 +146,8 @@ def main():
     # Preparing the main window
     text = ""
     friends = get_friends(s)
-    messages = get_msgs(s)
+    messages = [["dummy", "64-RD", "testing testing 123"], ["KarolDepta", "64-RD", "Kurwa kto mi kurczaka zajebał"]]
+    messages.extend(get_msgs(s, username))
     layout = [
         [sg.Listbox(values=friends, size=(20, 12), key='friends', enable_events=True),
          sg.Column([[sg.Txt(size=(50,20), key='msgs', background_color='grey')],
@@ -133,12 +157,13 @@ def main():
 
     # The main GUI part.
     window = sg.Window('SK2_Komunikator', layout)
-    values = {'friends': [""]}
+    values = {'friends': []}
+    last = ""
+    counter = 0
     while True:
 
         # Window event handling
-        prev = values['friends'][0]
-        event, values = window.read()
+        event, values = window.read(timeout=500)
 
         # Exiting the program on button press
         if event == 'Logout' or event == sg.WIN_CLOSED:
@@ -146,28 +171,41 @@ def main():
             break
 
         # Sending messages on button press
-        if event == 'Send' and values['input'] != '':
-            send_msg(s, values['friends'], values['input'])
+        if event == 'Send' and last != '':
+            send_msg(s, last, values['input'])
+            window['input'].update("")
+            messages.append([username, last, values['input']])
+            text = update_text(messages, last)
 
         # Adding friends on button press
         if event == 'Add friend':
             invite(s)
 
-        # If another friend was selected, update messages displayed
-        if values['friends'] != prev:
-            text = ""
-            for msg in messages:
-                if msg[0] == values['friends']:
-                    text += f"{msg[0]: {msg[1]}}"
+        # Adding friends on button press
+        if event == 'Delete friend':
+            delete_friend(s, friends)
 
-        # Send a bunch of requests to server.
-        friends = get_friends(s)
-        messages.append(get_msgs(s))
+        # A bit dumb checking if current friend was changed.
+        try:
+            last = values['friends'][0]
+            text = update_text(messages, last)
+        except IndexError:
+            pass
 
-        # Update the window with requests results.
+        # Simple counter, so we don't flood server with update requests.
+        if counter == 8:
+            friends = get_friends(s)
+            messages.extend(get_msgs(s, username))
+            text = update_text(messages, last)
+            counter = 0
+        else:
+            counter += 1
+
+        # Update the window.
         window['friends'].update(friends)
         window['msgs'].update(text)
 
+    # Close the window on program exit.
     window.close()
 
 
