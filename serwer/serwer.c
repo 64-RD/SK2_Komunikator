@@ -305,11 +305,11 @@ class Server
 			char buf[1024] = {0};
 			while (1)
 			{
-				read(fd1, &buf, sizeof(buf));	//receiving option to do
+				if (read(fd1, &buf, sizeof(buf)) == 0) break;	//receiving option to do
 
 				switch (buf[0])
 				{
-					case 'f': //sending friends list
+					case 'f': // sending friends list
 						{
 							if (DEBUG) printf("User: %s Sending friends list...\n",s->users[userID].username);
 
@@ -321,18 +321,26 @@ class Server
 									strcat(result,"\n");
 								}
 							pthread_mutex_unlock(&lock_friends);
+							printf("%s\n", result);
 							write(fd1,result,1024);
 							if (DEBUG) printf("User: %s Sending friends list - successful\n",s->users[userID].username);
 						}
 						break;
-					case 'a': //invite friend
+					
+					case 'a': // invite friend
 						{
 							if (DEBUG) printf("User: %s Sending invitation...\n",s->users[userID].username);
 							char u[16];				
 							read(fd1,&u,16);		//reveive username to invite
 							bool isFriend = false;
 							int id = s->findUser(u);
-							if(id != -1) 			//check if user exists
+							if (id == userID)
+							{
+								char mess[] = "You can't invite yourself!";
+								write(fd1, mess, sizeof(mess));
+
+							}
+							else if(id != -1) 			//check if user exists
 							{
 								pthread_mutex_lock(&lock_invitation);
 									for(uint i = 0;i <s->users[userID].invitations.size();i++)	//check if invitation has been earlier sent
@@ -379,7 +387,8 @@ class Server
 						}
 						if (DEBUG) printf("User: %s Invitation - successful\n",s->users[userID].username);
 						break;
-					case 'i'://send invitation list
+					
+					case 'i': // send invitation list
 						{
 							if (DEBUG) printf("User: %s Sending invitation list...\n",s->users[userID].username);
 							char result[1024];
@@ -396,7 +405,8 @@ class Server
 							if (DEBUG) printf("User: %s Sending invitation list - successful\n",s->users[userID].username);
 						}
 						break;
-					case 'b': //accept or decline invitation from user
+					
+					case 'b': // accept or decline invitation from user
 						{
 							if (DEBUG) printf("User: %s decision...\n",s->users[userID].username);
 							char decision[16];
@@ -425,7 +435,8 @@ class Server
 							if (DEBUG) printf("User: %s decision - successful\n",s->users[userID].username);
 							break;
 						}
-					case 'd': //delete a friend
+					
+					case 'd': // delete a friend
 						{
 							
 							if(DEBUG) printf("User: %s delete friend...\n",s->users[userID].username);
@@ -433,14 +444,24 @@ class Server
 							read(fd1,&user,16);
 							
 							int id = s->findUser(user);
-							s->users[userID].delFriend(id);
-							s->users[id].delFriend(userID);
-							if(DEBUG) printf("User: %s delete friend - successful\n",s->users[userID].username);
-
+							if (id == -1)
+							{
+								char mess[] = "No such user!";
+								write(fd1, mess, sizeof(mess));
+								if(DEBUG) printf("User: %s delete friend aborted, user not found\n",s->users[userID].username);
+							}
+							else
+							{
+								s->users[userID].delFriend(id);
+								s->users[id].delFriend(userID);
+								char mess[] = "Friend removed.";
+								write(fd1, mess, sizeof(mess));
+								if(DEBUG) printf("User: %s delete friend - successful\n",s->users[userID].username);
+							}
 						}
 						break;
 
-					case 'g':
+					case 'g': // get messages
 						{
 						pthread_mutex_lock(&lock_msg);
 							char tmp[16];
@@ -455,6 +476,7 @@ class Server
 						pthread_mutex_unlock(&lock_msg);
 						}
 						break;
+
 					case 'm': // send messages
 						{
 							if (DEBUG) printf("User: %s Sending Message...\n",s->users[userID].username);
@@ -470,7 +492,7 @@ class Server
 						}
 						break;
 
-					case 'l': //logout
+					case 'l': // logout
 						{
 							s->users[userID].online = false;
 							s->users[userID].fd = -1;
