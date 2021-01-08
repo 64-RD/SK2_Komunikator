@@ -366,6 +366,7 @@ class Server
 								pthread_mutex_unlock(&lock_friends);
 								if(!isFriend) //if exist,wasn't invated earlier and isn't friend then set invitation
 								{
+									
 									Invitation tmp;
 									tmp.user1 = userID;
 									tmp.user2 = id;
@@ -375,7 +376,15 @@ class Server
 										s->users[userID].invitations.push_back(tmp);
 									pthread_mutex_unlock(&lock_invitation);
 									write(fd1,"Invitation was send\n",21);
+									
+									Message msg;
+									strcpy(msg.to,s->users[id].username);
+									strcpy(msg.from,s->users[userID].username);
+									strcpy(msg.content,"");
 
+									pthread_mutex_lock(&lock_msg);
+										s->users[id].msgs.push_back(msg);				//invitation send as a empty message
+									pthread_mutex_unlock(&lock_msg);
 
 								}
 							}
@@ -387,7 +396,7 @@ class Server
 						}
 						if (DEBUG) printf("User: %s Invitation - successful\n",s->users[userID].username);
 						break;
-					
+					/*
 					case 'i': // send invitation list
 						{
 							if (DEBUG) printf("User: %s Sending invitation list...\n",s->users[userID].username);
@@ -405,7 +414,7 @@ class Server
 							if (DEBUG) printf("User: %s Sending invitation list - successful\n",s->users[userID].username);
 						}
 						break;
-					
+					*/
 					case 'b': // accept or decline invitation from user
 						{
 							if (DEBUG) printf("User: %s decision...\n",s->users[userID].username);
