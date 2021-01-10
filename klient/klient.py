@@ -3,6 +3,28 @@ import socket
 from time import sleep
 
 
+def get_ip():
+
+    layout = [
+        [sg.Text('Enter IP Address and Port.')],
+        [sg.Text('IP:', size=(15, 1)), sg.InputText(), sg.Text('Port:', size=(5, 1)), sg.InputText()],
+        [sg.Submit(), sg.Cancel()]
+    ]
+    window = sg.Window('SK2_Komunikator', layout)
+
+    i = None
+    p = None
+
+    event, values = window.read()
+    if event == 'Cancel' or event == sg.WIN_CLOSED:
+        exit(0)
+    else:
+        window.close()
+        i = values[0]
+        p = int(values[1])
+        return i, p
+
+
 def handle_login(s):
 
     layout = [
@@ -41,7 +63,7 @@ def logout(s):
 def get_friends(s):
     s.send("f".encode())
     data = s.recv(1024).decode()
-    return data.replace('\x00', '')
+    return data.replace('\x00', '').split('\n')
 
 
 def get_msgs(s, u):
@@ -136,9 +158,18 @@ def update_text(msgs, curr):
 
 def main():
 
-    # Connection start
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('192.168.0.12', 1124))
+    # Get IP address and port and start connection
+    while True:
+        ip, port = get_ip()
+        try:
+            # Connection start attempt
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            print(ip, port)
+            s.connect((ip, port))
+            break
+        except Exception as e:
+            sg.popup(str(e))
+            pass
 
     # Login phase
     username = handle_login(s)
@@ -146,8 +177,7 @@ def main():
     # Preparing the main window
     text = ""
     friends = get_friends(s)
-    messages = [["dummy", "64-RD", "testing testing 123"], ["KarolDepta", "64-RD", "Kurwa kto mi kurczaka zajebał"]]
-    messages.extend(get_msgs(s, username))
+    messages = get_msgs(s, username)
     layout = [
         [sg.Listbox(values=friends, size=(20, 12), key='friends', enable_events=True),
          sg.Column([[sg.Txt(size=(50,20), key='msgs', background_color='grey')],
