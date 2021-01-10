@@ -71,14 +71,20 @@ def handle_friend(s, u):
         [sg.Text(f"User {u} would like to be your friend. Do you accept?")],
         [sg.Button("Yes"), sg.Button("No")]
     ]
+    s.send('b'.encode())
     window = sg.Window('Friend Invite', layout)
-    event, _ = window.read()
-    if event == 'Yes':
-        s.send('t'.encode())
-    else:
-        s.send('f'.encode())
+    while True:
+        event, _ = window.read()
+        if event == 'Yes':
+            s.send('t'.encode())
+            break
+        if event == 'No' or event == sg.WIN_CLOSED:
+            s.send('f'.encode())
+            break
+
     sleep(1)
     s.send(u.encode())
+    window.close()
     return
 
 
@@ -87,8 +93,9 @@ def get_msgs(s, u):
     number = int.from_bytes(s.recv(4), "little")
     msgs = []
     for _ in range(number):
-        sender = s.recv(256).decode()
-        content = s.recv(4096).decode()
+        data = s.recv(1024*8).decode().replace('\x00', '').split('\n')
+        sender = data[0]
+        content = data[1]
         if content == "":
             handle_friend(s, sender)
         else:
@@ -109,7 +116,7 @@ def invite(s):
 
         event, values = window.read()
 
-        if event == 'Cancel':
+        if event == 'Cancel' or event == sg.WIN_CLOSED:
             return
 
         if event == 'Submit':
@@ -245,6 +252,7 @@ def main():
         if counter == 8:
             friends = get_friends(s)
             messages.extend(get_msgs(s, username))
+            print(messages)
             text = update_text(messages, last)
             counter = 0
         else:

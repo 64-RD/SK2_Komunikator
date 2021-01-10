@@ -305,7 +305,9 @@ class Server
 			char buf[1024] = {0};
 			while (1)
 			{
+				memset(buf, 0, 1024);
 				if (read(fd1, &buf, sizeof(buf)) == 0) break;	//receiving option to do
+
 
 				switch (buf[0])
 				{
@@ -420,26 +422,21 @@ class Server
 							if (DEBUG) printf("User: %s decision...\n",s->users[userID].username);
 							char decision[16];
 							read(fd1,&decision,16);	//just receive decision
+							printf("%s\n", decision);
 							char user[16];			
 							read(fd1,&user,16);		//receive username user accept or decline
+							printf("%s\n", user);
 							int id = s->findUser(user);
-							if(decision[0] = 't') //if want to accept
+							if(decision[0] == 't') //if want to accept
 							{
-								pthread_mutex_lock(&lock_friends);
-									s->users[userID].addFriend(id);		// add user to friend list
-									s->users[id].addFriend(userID);		//
-								pthread_mutex_unlock(&lock_friends);
-
-								pthread_mutex_lock(&lock_invitation);
-									s->popInvitation(userID,id); 				// delete from invitation list, casue decision has been made
-								pthread_mutex_unlock(&lock_invitation);
+								
+								s->users[userID].addFriend(id);		// add user to friend list
+								s->users[id].addFriend(userID);		//
+								s->popInvitation(userID,id); 				// delete from invitation list, casue decision has been made
 							}
-							else if(decision[0] = 'f') //if want to decline
+							else if(decision[0] == 'f') //if want to decline
 							{
-								pthread_mutex_lock(&lock_invitation);
-									s->popInvitation(userID,id);				// delete from invitation list, casue decision has been made
-								pthread_mutex_unlock(&lock_invitation);
-
+								s->popInvitation(userID,id);				// delete from invitation list, casue decision has been made
 							}
 							if (DEBUG) printf("User: %s decision - successful\n",s->users[userID].username);
 							break;
@@ -472,17 +469,22 @@ class Server
 
 					case 'g': // get messages
 						{
+						if(DEBUG) printf("User: %s - get messages\n",s->users[userID].username);
 						pthread_mutex_lock(&lock_msg);
-							char tmp[16];
+							char tmp[1024] = {};
 							int temp = int(s->users[userID].msgs.size());
 							write(fd1,&temp,sizeof(int));		//send number of messages
 							for(uint i =0; i<s->users[userID].msgs.size();i++)
 							{
-								write(s->users[userID].fd,s->users[userID].msgs[i].from,16);//send name of sender
-								write(s->users[userID].fd,s->users[userID].msgs[i].content,1024);//send message
+								strcat(tmp,s->users[userID].msgs[i].from);
+								strcat(tmp,"\n");
+								strcat(tmp,s->users[userID].msgs[i].content);
+								//write(s->users[userID].fd,s->users[userID].msgs[i].from,16);//send name of sender
+								write(s->users[userID].fd,&tmp,1024);//send message
 							}
 							s->users[userID].msgs.clear();
 						pthread_mutex_unlock(&lock_msg);
+						if(DEBUG) printf("User: %s - get messages successful\n",s->users[userID].username);
 						}
 						break;
 
@@ -513,7 +515,7 @@ class Server
 
 					default:
 						{
-							if(DEBUG) printf("User: %s: Uknown command\n",s->users[userID].username);
+							if(DEBUG) printf("User: %s: Unknown command\n",s->users[userID].username);
 						}
 						break;
 
