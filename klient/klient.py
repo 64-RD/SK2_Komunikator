@@ -66,6 +66,22 @@ def get_friends(s):
     return data.replace('\x00', '').split('\n')
 
 
+def handle_friend(s, u):
+    layout = [
+        [sg.Text(f"User {u} would like to be your friend. Do you accept?")],
+        [sg.Button("Yes"), sg.Button("No")]
+    ]
+    window = sg.Window('Friend Invite', layout)
+    event, _ = window.read()
+    if event == 'Yes':
+        s.send('t'.encode())
+    else:
+        s.send('f'.encode())
+    sleep(1)
+    s.send(u.encode())
+    return
+
+
 def get_msgs(s, u):
     s.send("g".encode())
     number = int.from_bytes(s.recv(4), "little")
@@ -73,7 +89,10 @@ def get_msgs(s, u):
     for _ in range(number):
         sender = s.recv(256).decode()
         content = s.recv(4096).decode()
-        msgs.append([sender, u, content])
+        if content == "":
+            handle_friend(s, sender)
+        else:
+            msgs.append([sender, u, content])
     return msgs
 
 
