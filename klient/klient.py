@@ -3,6 +3,7 @@ import socket
 from time import sleep
 
 
+# Creates the window that lets user enter IP and port of the server
 def get_ip():
 
     layout = [
@@ -25,6 +26,7 @@ def get_ip():
         return i, p
 
 
+# Creates the window that handles the login phase
 def handle_login(s):
 
     layout = [
@@ -55,17 +57,20 @@ def handle_login(s):
             return list(values.values())[0]
 
 
+# Sends the logout request to server.
 def logout(s):
     s.send("l".encode())
     return
 
 
+# Sends the "get friends" request to server.
 def get_friends(s):
     s.send("f".encode())
     data = s.recv(1024).decode()
     return data.replace('\x00', '').split('\n')
 
 
+# Handles the incoming friend request.
 def handle_friend(s, u):
     layout = [
         [sg.Text(f"User {u} would like to be your friend. Do you accept?")],
@@ -88,6 +93,7 @@ def handle_friend(s, u):
     return
 
 
+# Sends the "get messages" request to server.
 def get_msgs(s, u):
     s.send("g".encode())
     number = int.from_bytes(s.recv(4), "little")
@@ -103,6 +109,7 @@ def get_msgs(s, u):
     return msgs
 
 
+# Opens the window that lets user add a friend.
 def invite(s):
 
     layout = [
@@ -132,6 +139,7 @@ def invite(s):
     return
 
 
+# Sends the message to the server.
 def send_msg(s, to, content):
     s.send("m".encode())
     sleep(1)
@@ -140,6 +148,7 @@ def send_msg(s, to, content):
     s.send(content.encode())
 
 
+# Open the window that lets user remove a friend.
 def delete_friend(s, friends):
 
     layout = [
@@ -158,7 +167,6 @@ def delete_friend(s, friends):
 
         if event == 'Submit':
             username = values['friends'][0]
-            print(username)
             window.close()
             break
 
@@ -174,6 +182,7 @@ def delete_friend(s, friends):
     return
 
 
+# Updates current displayed text.
 def update_text(msgs, curr):
     text = ""
     for msg in msgs:
@@ -240,8 +249,9 @@ def main():
         # Adding friends on button press
         if event == 'Delete friend':
             delete_friend(s, friends)
+            text = ""
 
-        # A bit dumb checking if current friend was changed.
+        # A bit dumb checking if current friend was changed caused by API's construction
         try:
             last = values['friends'][0]
             text = update_text(messages, last)
