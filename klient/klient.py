@@ -157,7 +157,7 @@ def delete_friend(s, friends):
             return
 
         if event == 'Submit':
-            username = list(values.values())[0]
+            username = values['friends'][0]
             print(username)
             window.close()
             break
@@ -190,9 +190,9 @@ def main():
         try:
             # Connection start attempt
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print(ip, port)
             s.connect((ip, port))
             break
+
         except Exception as e:
             sg.popup(str(e))
             pass
@@ -252,7 +252,6 @@ def main():
         if counter == 8:
             friends = get_friends(s)
             messages.extend(get_msgs(s, username))
-            print(messages)
             text = update_text(messages, last)
             counter = 0
         else:

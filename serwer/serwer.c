@@ -141,7 +141,7 @@ class Server
 		*/
 		std::string getUsers(uint id)
 		{
-			char buf[1024] = {0};
+			//char buf[1024] = {0};
 			std::string result = "";
 			for (uint i = 0; i < this->users.size(); i++)
 			{
@@ -320,6 +320,7 @@ class Server
 								for (uint i = 0; i < s->users[userID].friends.size(); i++)
 								{
 									strcat(result, s->users[s->users[userID].friends[i]].username);
+									printf("%d - %s\n", s->users[userID].friends[i], s->users[s->users[userID].friends[i]].username);
 									strcat(result,"\n");
 								}
 							pthread_mutex_unlock(&lock_friends);
@@ -361,7 +362,7 @@ class Server
 										if(id == s->users[userID].friends[i])	
 										{
 											write(fd1,"User is friend\n",16);
-											isFriend == true;
+											isFriend = true;
 											break;
 										}
 									}
@@ -420,13 +421,16 @@ class Server
 					case 'b': // accept or decline invitation from user
 						{
 							if (DEBUG) printf("User: %s decision...\n",s->users[userID].username);
-							char decision[16];
+							char decision[16] = {0};
 							read(fd1,&decision,16);	//just receive decision
-							printf("%s\n", decision);
-							char user[16];			
+							char user[16] = {0};			
 							read(fd1,&user,16);		//receive username user accept or decline
-							printf("%s\n", user);
 							int id = s->findUser(user);
+							if (id == -1)
+							{
+								if (DEBUG) printf("User %s not found, aborting...\n", user);
+								break;
+							}
 							if(decision[0] == 't') //if want to accept
 							{
 								
@@ -438,7 +442,7 @@ class Server
 							{
 								s->popInvitation(userID,id);				// delete from invitation list, casue decision has been made
 							}
-							if (DEBUG) printf("User: %s decision - successful\n",s->users[userID].username);
+							if (DEBUG) printf("User: %s added user %s to friends.\n",s->users[userID].username, s->users[id].username);
 							break;
 						}
 					
@@ -523,7 +527,7 @@ class Server
 				
 				// best bug fix of the year 2020
 				// if you are offline, just logout
-				if(!s->users[userID].online) break;
+				if (!s->users[userID].online) break;
 			}
 
 			close(fd1);
