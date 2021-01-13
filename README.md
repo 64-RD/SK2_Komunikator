@@ -3,7 +3,7 @@
 Gadu-Gadu styled communicator with friends feature.
 
 to compile:
-g++ -pthread -W serwer.cpp -o <filename>
+g++ -pthread -W serwer.cpp -o filename
   
 to run:
-filename <port> <userfile> <debug(0/1)>
+./filename port userfile debug(0/1)
