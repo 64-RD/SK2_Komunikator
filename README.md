@@ -1,6 +1,9 @@
 # SK2_Komunikator
 [description]
-The best communicator
+Gadu-Gadu styled communicator with friends feature.
 
 to compile:
-g++ -pthread -W serwer.c -o <filename>
+g++ -pthread -W serwer.cpp -o <filename>
+  
+to run
+./filename <port> <userfile> <debug(0/1)>
