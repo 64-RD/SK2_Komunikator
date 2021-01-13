@@ -179,7 +179,7 @@ def delete_friend(s, friends):
     s.send(username.encode())
     data = s.recv(1024).decode()
     sg.popup(data)
-    return
+    return friends.remove(username)
 
 
 # Updates current displayed text.
@@ -236,7 +236,7 @@ def main():
             break
 
         # Sending messages on button press
-        if event == 'Send' and last != '':
+        if event == 'Send' and last != '' and values['input'] != '' and last in friends:
             send_msg(s, last, values['input'])
             window['input'].update("")
             messages.append([username, last, values['input']])
@@ -246,11 +246,6 @@ def main():
         if event == 'Add friend':
             invite(s)
 
-        # Adding friends on button press
-        if event == 'Delete friend':
-            delete_friend(s, friends)
-            text = ""
-
         # A bit dumb checking if current friend was changed caused by API's construction
         try:
             last = values['friends'][0]
@@ -258,8 +253,14 @@ def main():
         except IndexError:
             pass
 
+        # Adding friends on button press
+        if event == 'Delete friend':
+            friends = delete_friend(s, friends)
+            text = ""
+            prev = ""
+
         # Simple counter, so we don't flood server with update requests.
-        if counter == 8:
+        if counter == 4:
             friends = get_friends(s)
             messages.extend(get_msgs(s, username))
             text = update_text(messages, last)

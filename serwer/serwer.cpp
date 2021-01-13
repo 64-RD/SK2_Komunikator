@@ -316,7 +316,6 @@ class Server
 							for (uint i = 0; i < s->users[userID].friends.size(); i++)
 							{
 								strcat(result, s->users[s->users[userID].friends[i]].username);
-								printf("%d - %s\n", s->users[userID].friends[i], s->users[s->users[userID].friends[i]].username);
 								strcat(result,"\n");
 							}
 						pthread_mutex_unlock(&lock_friends);
@@ -381,6 +380,9 @@ class Server
 								
 								// Create the message with invitation info for client
 								Message msg;
+								memset(msg.from, 0, 16);
+								memset(msg.to, 0, 16);
+								memset(msg.content, 0, 1024);
 								strcpy(msg.to,s->users[id].username);
 								strcpy(msg.from,s->users[userID].username);
 								strcpy(msg.content,"");
@@ -479,7 +481,9 @@ class Server
 						if (DEBUG) printf("User: %s Sending Message...\n",s->users[userID].username);
 
 						Message msg;
-
+						memset(msg.from, 0, 16);
+						memset(msg.to, 0, 16);
+						memset(msg.content, 0, 1024);
 						strcpy(msg.from,s->users[userID].username);	// get sender username
 						read(fd1,&msg.to,16);						// get receiver username
 						read(fd1,&msg.content,1024);				// receive content of a message
