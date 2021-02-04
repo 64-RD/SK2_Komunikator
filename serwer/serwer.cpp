@@ -34,12 +34,94 @@ pthread_mutex_t lock_friends = PTHREAD_MUTEX_INITIALIZER;	//mutex to friends
 pthread_mutex_t lock_invitation = PTHREAD_MUTEX_INITIALIZER;//mutex to invitations
 
 
+// Custom read/write wrappers
+
+void customIntWrite(int content, int fd)
+{
+	int result = write(fd, &content, 8);
+
+	if (result == -1 || result == 0)
+	{
+		close(fd);
+		if (DEBUG) printf("Error %d on sending int! (fd: %d)\n", result, fd);
+		pthread_exit(NULL);
+	}
+	else while (result != 8) result += write(fd, &content + result, 8 - result);
+	return;
+}
+
+void customCharWrite(char * content, int fd, int size)
+{
+	int result = write(fd, &content, size);
+
+	if (result == -1 || result == 0)
+	{
+		close(fd);
+		if (DEBUG) printf("Error %d on sending char! (fd: %d)\n", result, fd);
+		pthread_exit(NULL);
+	}
+	else while (result != size) result += write(fd, &content + result, size - result);
+	return;
+}
+
+int customIntRead(int fd)
+{
+	int number = 0;
+	int result = read(fd, &number, 1);
+	if (result == -1 || result == 0)
+	{
+		close(fd);
+		if (DEBUG) printf("Error %d on sending char! (fd: %d)\n", result, fd);
+		pthread_exit(NULL);
+	}
+	return number;
+}
+
+char customSingleCharRead(int fd)
+{
+	char x;
+	int result = read(fd, &x, 1);
+	if (result == -1 || result == 0)
+	{
+		close(fd);
+		if (DEBUG) printf("Error %d on reading char! (fd: %d)\n", x, fd);
+		pthread_exit(NULL);
+	}
+	return x;
+}
+
+char * customCharRead(int fd, int size)
+{
+	std::string str;
+	char buf[1024] = {0};
+	int result = 0, x;
+	while (result < size)
+	{
+		printf("%d < %d\n", result, size);
+		x = read(fd, &buf, 1024);
+		if (x == -1)
+		{
+			close(fd);
+			if (DEBUG) printf("Error %d on reading char! (fd: %d)\n", x, fd);
+			pthread_exit(NULL);
+		}
+		result += x;
+		str += buf;
+		memset(buf, 0, 1024);
+	}
+	return strdup(str.c_str());
+	
+}
+
+
+
 // Few structs that are widely used in server's code.
 
 struct Message
 {
 	char from[16];
 	char to[16];
+	int size;
 	char content[1024];
 };
 
@@ -235,10 +317,6 @@ class Server
 			pthread_mutex_unlock(&users[to].lock_msg);
 			return;
 		}
-		void receive()
-		{
-
-		}
 
 		// Handles the login of a client.
 		int login(int fd)
@@ -251,53 +329,38 @@ class Server
 				// Read username and password from the client.
 				memset(&u, 0, 16);
 				memset(&p, 0, 16);
-				if(read(fd, &u, sizeof(u)) == 0)
-				{
-					u[0] ='l';
-					u[1]= 0;
-				}
-				if (u[0] == 'l' && u[1] == 0) // Sudden connection failure handling
-				{
-					close(fd);
-					if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd);
-					pthread_exit(NULL);
-				}
-				if(read(fd, &p, sizeof(p)) == 0)
+
+				strcpy(u, customCharRead(fd, 16));
+
+				// Window close handling
+				if (u[0] == 'l' && u[1] == 0) 
 				{
 					close(fd);
 					if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd);
 					pthread_exit(NULL);
 				}
+
+				strcpy(p, customCharRead(fd, 16));
+
 				if (DEBUG) printf("User %s tries to log in...\n", u);
 
 				// Check login credentials.
 				if (this->loginChecker(u, p)) break;
 				else
 				{
-					char msg[] = "Login unsuccessful!\0"; // Send result
-					if(write(fd, &msg, sizeof(msg)) == -1)
-					{				
-						close(fd);
-						if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd);
-						pthread_exit(NULL);
-					}
+					char msg[20] = "Login unsuccessful!"; // Send result
+					customCharWrite(msg, fd, 20);
 				}
 				
 			}
 
 			// If login successful, send confirmation and update server's data
-			char msg[] = "Login successful!\0";
-			if(write(fd, &msg, sizeof(msg)) == -1)
-			{
-					close(fd);
-					if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd);
-					pthread_exit(NULL);
-			}
+			char msg[20] = "Login successful!\0";
+			customCharWrite(msg, fd, 20);
 			if (DEBUG) printf("User %s logged in.\n", u);
 			int userID = this->findUser(u);
 			this->users[userID].online = true;
 			this->users[userID].fd = fd;
-
 			return userID;
 		}
 
@@ -311,42 +374,40 @@ class Server
 		static void *handleThread(void *arg)
 		{
 			PthData *x = ((PthData*) arg);
-			int fd1 = x->fd;						// Descriptor of client
-			Server * s = x->server;				// Pointer to server
+			int fd = x->fd;						// Descriptor of client
+			Server * s = x->server;			// Pointer to server
+			delete x;
+
 			// Strart the login phase
-			int userID = s->login(fd1);
+			int userID = s->login(fd);
 
 			// Handling requests happens here
-			char buf[1024] = {0};
+			char buf;
 			while (1)
 			{
 				
 				// Wait for and read the clients request type
-				memset(buf, 0, 1024);
-				if (read(fd1, &buf, sizeof(buf)) <= 0) break;
+				buf = customSingleCharRead(fd);
 
 				// Depending on a client's request, behave accordingly
-				switch (buf[0])
+				switch (buf)
 				{
-					
 					// Sending friends list to client
 					case 'f': 
 					{
 						if (DEBUG) printf("User: %s Sending friends list...\n",s->users[userID].username);
 
-						char result[1024] = {0};
+						std::string result = "";
 						pthread_mutex_lock(&lock_friends);
 							for (uint i = 0; i < s->users[userID].friends.size(); i++)
 							{
-								strcat(result, s->users[s->users[userID].friends[i]].username);
-								strcat(result,"\n");
+								result += s->users[s->users[userID].friends[i]].username;
+								result += "\n";
 							}
 						pthread_mutex_unlock(&lock_friends);
-						if(write(fd1,result,1024) == -1)
-						{
-							buf[0] = 0;
-							break;
-						}
+						customIntWrite(result.length(), fd);
+						customCharWrite(strdup(result.c_str()), fd, result.length());
+
 						if (DEBUG) printf("User: %s Sending friends list - successful\n",s->users[userID].username);
 					}
 					break;
@@ -355,22 +416,14 @@ class Server
 					case 'a': 
 					{
 						if (DEBUG) printf("User: %s Sending invitation...\n",s->users[userID].username);
-						char u[16];				
-						if(read(fd1,&u,16) <= 0) // Reveive username to invite
-						{
-							buf[0] = 0; 
-							break;
-						}		
+						char u[16] = {0};
+						strcpy(u, customCharRead(fd, 16));
 						bool isFriend = false;
 						int id = s->findUser(u);
 						if (id == userID)
 						{
-							char mess[] = "You can't invite yourself!";
-							if(write(fd1, mess, sizeof(mess))==-1)
-							{				
-								buf[0] = 0;
-								break;
-							}
+							char mess[32] = "You can't invite yourself!";
+							customCharWrite(mess, fd, 32);
 
 						}
 						else if (id != -1) 		// Check if user exists
@@ -380,11 +433,8 @@ class Server
 							{
 								if (s->users[userID].invitations[i].user2 == id || s->users[id].invitations[i].user1 == userID)
 								{
-									if(write(fd1, "Was sent earlier\n", 16) ==-1)
-									{				
-										buf[0] = 0;
-										break;
-									}
+									char mess[32] = "Was sent earlier";
+									customCharWrite(mess, fd, 32);
 									isFriend = true;
 									break;
 								}
@@ -396,11 +446,8 @@ class Server
 							{
 								if (id == s->users[userID].friends[i])	
 								{
-									if(write(fd1,"User is friend\n",16) ==-1)
-									{				
-										buf[0] = 0;
-										break;
-									}
+									char mess[32] = "User is friend";
+									customCharWrite(mess, fd, 32);
 									isFriend = true;
 									break;
 								}
@@ -419,16 +466,15 @@ class Server
 								s->users[id].invitations.push_back(tmp);
 								s->users[userID].invitations.push_back(tmp);
 								pthread_mutex_unlock(&lock_invitation);
-								if(write(fd1, "Invitation was send\n", 21) ==-1)
-								{				
-									buf[0] = 0;
-									break;
-								}
+								
+								char mess[32] = "Invitation was send";
+								customCharWrite(mess, fd, 32);
 								
 								// Create the message with invitation info for client
 								Message msg;
 								memset(msg.from, 0, 16);
 								memset(msg.to, 0, 16);
+								msg.size = 0;
 								memset(msg.content, 0, 1024);
 								strcpy(msg.to,s->users[id].username);
 								strcpy(msg.from,s->users[userID].username);
@@ -440,11 +486,11 @@ class Server
 
 							}
 						}
-						else if(write(fd1,"User don't exist\n",16) ==-1)
-							{				
-								buf[0] = 0;
-								break;
-							}
+						else 
+						{
+							char mess[32] = "User don't exist";
+							customCharWrite(mess, fd, 32);
+						}
 						
 						if (DEBUG) printf("User: %s Invitation - successful\n",s->users[userID].username);
 					}
@@ -454,32 +500,24 @@ class Server
 					case 'b': 
 					{	
 						if (DEBUG) printf("User: %s decision...\n", s->users[userID].username);
-						char decision[16] = {0};
-						if(read(fd1, &decision, 16) <= 0)	// Receive decision
-						{
-							buf[0] = 0; 
-							break;
-						}
-						char user[16] = {0};			
-						if(read(fd1, &user, 16) <= 0)		// Receive username user accept or decline
-						{
-							buf[0] = 0; 
-							break;
-						}
+						char decision = customSingleCharRead(fd);
+						char user[16] = {0};
+						strcpy(user, customCharRead(fd, 16));			
+						
 						int id = s->findUser(user);
 						if (id == -1)
 						{
 							printf("User %s tried to add %s as a friend, aborting...\n", s->users[userID].username, user);
 							break;
 						}
-						if (decision[0] == 't') 	// If wants to accept
+						if (decision == 't') 	// If wants to accept
 						{
 							
 							s->users[userID].addFriend(id);		// Add user to friend list
 							s->users[id].addFriend(userID);		// Same as before
 							s->popInvitation(userID,id); 		// Delete from invitation list, casue decision has been made
 						}
-						else if(decision[0] == 'f') // If wants to decline
+						else if(decision == 'f') // If wants to decline
 						{
 							s->popInvitation(userID,id);		// Delete from invitation list, casue decision has been made
 						}
@@ -492,35 +530,23 @@ class Server
 					case 'd': 
 					{	
 						if(DEBUG) printf("User: %s delete friend...\n",s->users[userID].username);
-						char user[16];
-						if(read(fd1,&user,16) <= 0)
-						{
-							buf[0] = 0; 
-							break;
-						}
+						char user[16] = {0};
+						strcpy(user, customCharRead(fd, 16));
 						
 						int id = s->findUser(user);
 						if (id == -1)
 						{
-							char mess[] = "No such user!";
-							if(write(fd1, mess, sizeof(mess)) ==-1)
-							{				
-								buf[0] = 0;
-								break;
-							}
+							char mess[16] = "No such user!";
+							customCharWrite(mess, fd, 16);
 							if(DEBUG) printf("User: %s delete friend aborted, user not found\n",s->users[userID].username);
 						}
 						else
 						{
 							s->users[userID].delFriend(id);
 							s->users[id].delFriend(userID);
-							char mess[] = "Friend removed.";
-							if(write(fd1, mess, sizeof(mess)) ==-1)
-							{				
-								buf[0] = 0;
-								break;
-							}
-							if(DEBUG) printf("User: %s delete friend - successful\n",s->users[userID].username);
+							char mess[16] = "Friend removed.";
+							customCharWrite(mess, fd, 16);
+							if (DEBUG) printf("User: %s delete friend - successful\n", s->users[userID].username);
 						}
 					}
 					break;
@@ -532,21 +558,14 @@ class Server
 						pthread_mutex_lock(&(s->users[userID].lock_msg));
 						char tmp[1024] = {0};
 						int temp = int(s->users[userID].msgs.size());
-						if(write(fd1, &temp, sizeof(int)) ==-1)	// Send number of messages first
-						{				
-							buf[0] = 0;
-							break;
-						}		
+						customIntWrite(temp, fd);	
 						for (uint i = 0; i < s->users[userID].msgs.size(); i++)
 						{
 							strcat(tmp,s->users[userID].msgs[i].from);
 							strcat(tmp,"\n");
 							strcat(tmp,s->users[userID].msgs[i].content);
-							if(write(s->users[userID].fd,&tmp,1024) ==-1)//send Message
-							{				
-								buf[0] = 0;
-								break;
-							} 
+							customIntWrite(17+s->users[userID].msgs[i].size, fd);
+							customCharWrite(tmp, fd, 17+s->users[userID].msgs[i].size);
 						}
 						s->users[userID].msgs.clear();
 						pthread_mutex_unlock(&(s->users[userID].lock_msg));
@@ -562,27 +581,33 @@ class Server
 						Message msg;
 						memset(msg.from, 0, 16);
 						memset(msg.to, 0, 16);
+						msg.size = 0;
 						memset(msg.content, 0, 1024);
 						strcpy(msg.from,s->users[userID].username);	// get sender username
-						if(read(fd1,&msg.to,16) <= 0)					// get receiver username
-						{
-							buf[0] = 0; 
-							break;
-						}
-						//while(1)
-						//{
-							int size = read(fd1,&msg.content,1024);
-							s->sendMessage(msg);
-						//	if(size >= 0 && size <1024)
-						//		break;		
-						//}
-												// send message
+
+						char user[16] = {0};
+						strcpy(user, customCharRead(fd, 16));
+						strcpy(msg.to, user);
+
+						int size = customIntRead(fd);
+						msg.size = size;
+
+						strcpy(msg.content, customCharRead(fd, size));
+						s->sendMessage(msg);
 					}
 					break;
 
 					// Logout
 					case 'l':
-						break;
+					{
+						s->users[userID].online = false;
+						s->users[userID].fd = -1;
+						if (DEBUG) printf("User: %s: Logout\n",s->users[userID].username);
+						close(fd);
+						if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd);
+						pthread_exit(NULL);
+					}
+					break;
 						
 					// Unknown command. Basically unused
 					default:
@@ -592,22 +617,8 @@ class Server
 					break;
 
 				}
-				
-				// Logout gets handled here, both expected and unexcpected
-				if (!s->users[userID].online || buf[0] == 'l' || buf[0] == 0)
-				{
-					s->users[userID].online = false;
-					s->users[userID].fd = -1;
-					if (DEBUG) printf("User: %s: Logout\n",s->users[userID].username);
-					break;
-				}
 			}
-
-			// Close connection and shut down thread
-			close(fd1);
-			delete x;
-			if (DEBUG) printf("Exiting thread... (fd: %d)\n", fd1);
-			pthread_exit(NULL);
+			
 		}
 
 		// Main loop of the main thread. Accepts connections and generates new threads
